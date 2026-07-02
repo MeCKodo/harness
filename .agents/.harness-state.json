@@ -1,0 +1,17 @@
+{
+  "bindings": {
+    "knowledge/domain.md": {
+      "src/cli.ts": "9f40d91582bef2577d788c534a9f2c91f071d6549ac91a3e79857fae086709c5",
+      "src/manifest.ts": "7c46d4a89e17443060df9ff6e589f5aab35a020ea5306f34adf149fa7395eea4"
+    },
+    "module:cli": {
+      "src/cli.ts": "9f40d91582bef2577d788c534a9f2c91f071d6549ac91a3e79857fae086709c5"
+    },
+    "module:render": {
+      "src/render.ts": "bb3bdf4df1e5880dce1fad6cbfe9e19dc7925d7e210cdff9d76ec325dfff2625"
+    },
+    "module:enforce": {
+      "src/enforce.ts": "732b599b0e5ee0a541d4a0ae81580a2c993ad261cf20196a3a8f4063882344b9"
+    }
+  }
+}

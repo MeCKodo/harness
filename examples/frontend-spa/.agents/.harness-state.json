@@ -1,0 +1,8 @@
+{
+  "bindings": {
+    "knowledge/conventions.md": {
+      "eslint.config.js": "(missing)",
+      "tsconfig.json": "(missing)"
+    }
+  }
+}

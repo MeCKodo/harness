@@ -1,0 +1,61 @@
+spec: ai-harness/v0
+
+# 压测样例 B：纯 npm 库（发布到 registry，无运行时入口）
+
+identity:
+  name: "@acme/date-utils"
+  summary: 轻量日期处理工具库，双格式 (ESM + CJS) 发布
+  scope_in:
+    - 公共 API 与实现
+    - 类型定义
+  scope_out:
+    - 使用本库的任何应用（属 downstream）
+  upstream:
+    - 少量运行时依赖（见 package.json）
+  downstream:
+    - npm registry
+    - 任何引入本库的项目
+
+capabilities:
+  setup:     { run: "pnpm install" }
+  build:     { run: "pnpm build", desc: "tsup 出 ESM+CJS+d.ts 到 dist/" }
+  typecheck: { run: "tsc --noEmit" }
+  lint:      { run: "pnpm lint" }
+  test:      { run: "pnpm test", desc: "Vitest + 覆盖率" }
+  docs:      { run: "pnpm typedoc", desc: "生成 API 文档" }
+  verify:    { run: "harness verify" }
+  release:   { run: "pnpm changeset publish", desc: "发布到 npm", mutating: true }
+  # 注意：无 run —— 库不"运行"
+
+# 库通常无需 environment（无运行时配置）；发布凭证走 CI secret，不在此声明
+
+contracts:
+  - id: public-api
+    kind: public-api
+    desc: dist 导出的公共 API 即契约，破坏须 major
+    breaking_needs: major
+    check: "pnpm api-extractor run"
+
+invariants:
+  - id: exports-from-index
+    rule: 所有公共导出必须经 src/index.ts
+    enforcement:
+      forbid_pattern: ["export .* from"]
+      path_glob: ["src/internal/**"]
+  - id: no-side-effects-on-import
+    rule: import 时不得有副作用（保证 tree-shaking）
+    check: "checks/no-side-effects.sh"
+  - id: no-any-in-public-types
+    rule: 公共类型不得出现 any
+    enforcement:
+      forbid_pattern: [":\\s*any\\b"]
+      path_glob: ["src/**/*.ts"]
+
+knowledge:
+  - path: knowledge/domain.md
+    role: domain
+  - path: knowledge/journal/
+    role: journal          # 例：为什么双格式发布、为什么弃用某 API
+
+playbooks:
+  dir: playbooks/          # 例：add-public-api / cut-a-release

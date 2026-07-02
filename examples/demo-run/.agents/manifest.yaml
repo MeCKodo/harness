@@ -1,0 +1,43 @@
+spec: ai-harness/v0
+
+identity:
+  name: demo-service
+  summary: TODO one-line description of what this repo is
+  scope_in: []
+  scope_out: []
+  upstream: []
+  downstream: []
+
+capabilities:
+  setup:  { run: "pnpm install" }
+  build:  { run: "pnpm build" }
+  test:   { run: "pnpm test" }
+  lint:   { run: "pnpm lint" }
+  verify: { run: "harness verify" }
+
+environment: []
+
+contracts: []
+
+invariants:
+  - id: no-console-log
+    rule: No stray console.log left in source
+    enforcement:
+      forbid_pattern: ["console\\.log\\("]
+      path_glob: ["src/**"]
+  - id: no-hardcoded-secret
+    rule: Do not hardcode secrets / tokens in source
+    enforcement:
+      forbid_pattern: ["(password|secret|token)\\s*[:=]\\s*[\"'][^\"']+[\"']"]
+      path_glob: ["src/**"]
+
+knowledge:
+  - path: knowledge/domain.md
+    role: domain
+  - path: knowledge/conventions.md
+    role: conventions
+  - path: knowledge/journal/
+    role: journal
+
+playbooks:
+  dir: playbooks/

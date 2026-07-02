@@ -1,0 +1,70 @@
+spec: ai-harness/v0
+
+# 压测样例 C：命令行工具（Node/TS，编译为可执行 bin）
+
+identity:
+  name: acme-deploy
+  summary: 把服务部署到 K8s 的命令行工具
+  scope_in:
+    - 子命令与参数解析
+    - 部署编排核心逻辑
+  scope_out:
+    - 被部署的业务服务本身
+    - K8s 集群的运维（属 downstream 环境）
+  upstream:
+    - Kubernetes API
+    - 容器镜像仓库
+  downstream:
+    - 使用者的终端 / CI 流水线
+
+capabilities:
+  setup:  { run: "pnpm install" }
+  build:  { run: "pnpm build", desc: "编译到 bin/acme-deploy" }
+  test:   { run: "pnpm test" }
+  lint:   { run: "pnpm lint" }
+  run:    { run: "node bin/acme-deploy", example: "acme-deploy up --env staging --service web", desc: "无参数无意义，须带子命令" }
+  smoke:  { run: "pnpm smoke", desc: "对 fixture 集群跑一遍冒烟" }
+  verify: { run: "harness verify" }
+  release: { run: "pnpm release", desc: "发布新版本 bin", mutating: true }
+
+environment:
+  - name: KUBECONFIG
+    desc: 目标集群凭证路径
+    required: true
+    secret: true
+  - name: REGISTRY_TOKEN
+    desc: 镜像仓库令牌
+    required: true
+    secret: true
+
+contracts:
+  - id: cli-interface
+    kind: cli-interface
+    desc: 子命令与 flag 即用户契约，改名/删 flag 须 major
+    breaking_needs: major
+    check: "checks/cli-snapshot.sh"   # 对 --help 输出做快照比对
+
+invariants:
+  - id: every-command-has-help
+    rule: 每个子命令必须支持 --help
+    check: "checks/help-coverage.sh"
+  - id: documented-exit-codes
+    rule: 退出码须在 docs 中登记
+    manual: true
+  - id: no-plaintext-secrets-in-logs
+    rule: 日志不得打印 token/凭证
+    enforcement:
+      forbid_pattern: ["console\\.log\\(.*token", "console\\.log\\(.*KUBECONFIG"]
+      path_glob: ["src/**"]
+
+knowledge:
+  - path: knowledge/domain.md
+    role: domain
+  - path: map/commands.md
+    role: other
+    # 命令参考由 --help 生成，不手写（见 SPEC §6）
+  - path: knowledge/journal/
+    role: journal
+
+playbooks:
+  dir: playbooks/          # 例：add-subcommand

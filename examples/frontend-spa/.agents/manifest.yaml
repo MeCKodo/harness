@@ -1,0 +1,72 @@
+spec: ai-harness/v0
+
+# 压测样例 A：前端 SPA（React + Vite + TypeScript）
+
+identity:
+  name: acme-dashboard
+  summary: 面向企业用户的运营后台 Web 应用
+  scope_in:
+    - UI 组件与页面
+    - 客户端路由与状态管理
+    - 调用后端 REST API 的数据层
+  scope_out:
+    - 后端 API 的实现（属 upstream，勿在此仓改）
+    - 设计系统组件库的实现（属 upstream）
+  upstream:
+    - acme-api（后端 REST 服务）
+    - acme-design-system（npm 组件库）
+  downstream:
+    - 终端用户浏览器
+    - CDN（构建产物托管）
+
+capabilities:
+  setup:     { run: "pnpm install" }
+  run:       { run: "pnpm dev", desc: "本地 dev server", background: true }
+  build:     { run: "pnpm build", desc: "产物到 dist/" }
+  typecheck: { run: "tsc --noEmit" }
+  lint:      { run: "pnpm lint" }
+  test:      { run: "pnpm test", desc: "Vitest 单测" }
+  e2e:       { run: "pnpm e2e", desc: "Playwright 端到端" }
+  verify:    { run: "harness verify" }
+
+environment:
+  - name: VITE_API_BASE_URL
+    desc: 后端 API 根地址
+    required: true
+  - name: VITE_SENTRY_DSN
+    desc: 前端错误上报
+    required: false
+    secret: true
+
+contracts:
+  - id: backend-rest-api
+    kind: http-api
+    desc: 依赖 acme-api 的 OpenAPI 契约；字段变更需与后端协商
+    check: "pnpm openapi:check"
+
+invariants:
+  - id: no-raw-fetch
+    rule: 禁止在组件里直接 fetch，统一走 src/api/
+    enforcement:
+      forbid_pattern: ["\\bfetch\\("]
+      path_glob: ["src/components/**", "src/pages/**"]
+  - id: no-hardcoded-api-url
+    rule: 不得硬编码 API 地址，须读 VITE_API_BASE_URL
+    enforcement:
+      forbid_pattern: ["https?://api\\."]
+      path_glob: ["src/**"]
+  - id: a11y-baseline
+    rule: 交互元素需可键盘访问、有 aria 标签
+    manual: true
+
+knowledge:
+  - path: knowledge/domain.md
+    role: domain
+  - path: knowledge/conventions.md
+    role: conventions
+    binds: ["eslint.config.js", "tsconfig.json"]
+  - path: knowledge/journal/
+    role: journal
+
+playbooks:
+  dir: playbooks/

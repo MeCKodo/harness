@@ -1,0 +1,59 @@
+{
+  "name": "@meckodo/harness",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "AI-friendly repo harness: a manifest.yaml single source of truth that generates AGENTS.md / CLAUDE.md / Cursor rules and enforces invariants, contracts and drift via `harness verify`.",
+  "keywords": [
+    "ai",
+    "agent",
+    "agents.md",
+    "cli",
+    "harness",
+    "scaffold",
+    "manifest",
+    "cursor",
+    "claude"
+  ],
+  "homepage": "https://github.com/MeCKodo/harness#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MeCKodo/harness.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MeCKodo/harness/issues"
+  },
+  "author": "MeCKodo (二哲) <https://erzhe.me/>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "mk-harness": "dist/mk-harness.cjs"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "SPEC-v0.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "harness": "tsx src/cli.ts",
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=cjs --target=node18 --outfile=dist/mk-harness.cjs && chmod +x dist/mk-harness.cjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "prepare": "pnpm build"
+  },
+  "dependencies": {
+    "commander": "^15.0.0",
+    "fast-glob": "^3.3.3",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.22.5",
+    "typescript": "^6.0.3"
+  }
+}

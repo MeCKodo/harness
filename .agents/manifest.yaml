@@ -1,0 +1,97 @@
+spec: ai-harness/v0
+
+identity:
+  name: ai-harness
+  summary: AI-friendly repo harness CLI —— 把工程知识变成 agent 可消费的 manifest，生成各工具文件并用门禁保证一致
+  scope_in:
+    - CLI 命令 init / sync / doctor / verify（src/）
+    - manifest schema + 生成器 + 声明式不变量执行 + 派生新鲜度
+  scope_out:
+    - 目标仓库自身的业务代码（本工具只读它们的 .agents/manifest.yaml）
+    - spec-driven 工作流引擎（Spec Kit / Kiro 的活，可骑在我们之上）
+  downstream:
+    - 任何被 harness 初始化的仓库
+
+capabilities:
+  setup:     { run: "pnpm install" }
+  typecheck: { run: "pnpm typecheck", desc: "tsc --noEmit" }
+  test:      { run: "pnpm test", desc: "node:test + tsx 核心单测（enforce/state/render/contracts/manifest）" }
+  build:     { run: "pnpm build", desc: "esbuild 打包成 dist/harness.cjs 单文件可执行（bin 入口）" }
+  harness:   { run: "pnpm exec tsx src/cli.ts", desc: "跑 CLI（开发态）", example: "pnpm exec tsx src/cli.ts verify --repo ." }
+
+contracts:
+  - id: cli-interface
+    kind: cli-interface
+    desc: init/sync/doctor/verify/accept-contract 命令 + flags；改动即影响所有使用者
+    breaking_needs: minor
+    snapshot: "pnpm exec tsx src/cli.ts --help"
+  - id: manifest-schema
+    kind: other
+    desc: .agents/manifest.yaml 的 schema（见 SPEC-v0.md）；删字段/改语义会破坏已初始化的仓
+    breaking_needs: major
+    manual_verify: 对 examples/ 下三个样板跑 doctor，确认仍 healthy
+
+invariants:
+  - id: no-raw-console-in-commands
+    rule: 命令模块统一走 util 的 ok/err/warn/info，不直接 console.log
+    enforcement:
+      forbid_pattern: ["console\\.log\\("]
+      path_glob: ["src/commands/**"]
+  - id: generated-header-present
+    rule: 所有生成物顶部必须带 DO-NOT-EDIT 头（由 GEN_HEADER 保证）
+    manual: true
+
+knowledge:
+  - path: knowledge/domain.md
+    role: domain
+    binds: ["src/cli.ts", "src/manifest.ts"]
+  - path: knowledge/journal/
+    role: journal
+
+routing:
+  - when: 加 / 改 CLI 命令
+    read: ["src/cli.ts", "src/commands"]
+    entry: ["src/cli.ts"]
+    dont_assume:
+      - 用户可见输出走 util 的 ok/err/warn/info（ASCII，无 emoji）
+    verify: ["typecheck"]
+  - when: 改 manifest schema
+    read: ["src/manifest.ts", "SPEC-v0.md"]
+    entry: ["src/manifest.ts"]
+    dont_assume:
+      - schema 改动要同步 SPEC-v0.md + examples/ 三个样板，否则 doctor 漂移
+    verify: ["typecheck"]
+  - when: 改生成模板
+    read: ["src/render.ts"]
+    entry: ["src/render.ts"]
+    dont_assume:
+      - AGENTS.md 有体量预算（150 行 / 700 词），细节下沉到 .agents/
+    verify: ["typecheck"]
+  - when: 加 / 改测试
+    read: ["test", "src"]
+    entry: ["test"]
+    dont_assume:
+      - 单测用 node:test + tsx，勿引入 jest/vitest（反仪式、少依赖）
+    verify: ["test", "typecheck"]
+
+modules:
+  - name: cli
+    role: 命令入口与分发（commander）
+    entry: ["src/cli.ts"]
+    pitfalls:
+      - 新命令记得用 guard() 包裹，统一错误退出码
+  - name: render
+    role: manifest -> 各工具文件的生成器
+    entry: ["src/render.ts"]
+    must_know:
+      - routing/modules 只在声明时才生成对应 .agents/*.md
+    pitfalls:
+      - AGENTS.md 要保持精简，别把 routing/modules 全文塞进去
+  - name: enforce
+    role: 声明式不变量执行（确定性，无 LLM）
+    entry: ["src/enforce.ts"]
+    pitfalls:
+      - path_glob 是 include-only；想排除文件只能靠缩小 glob 范围
+
+playbooks:
+  dir: playbooks/
