@@ -1,4 +1,4 @@
-Usage: mk-harness [options] [command]
+Usage: harness-kit [options] [command]
 
 AI-friendly repo harness
 

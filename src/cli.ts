@@ -18,7 +18,7 @@ function guard(fn: () => void | number): void {
 }
 
 const program = new Command();
-program.name("mk-harness").description("AI-friendly repo harness").version("0.1.0");
+program.name("harness-kit").description("AI-friendly repo harness").version("0.1.0");
 
 const repoOf = (o: { repo: string }) => resolve(o.repo);
 

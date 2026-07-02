@@ -98,7 +98,7 @@ export function manifestPath(repo: string): string {
 export function loadManifest(repo: string): Manifest {
   const p = manifestPath(repo);
   if (!existsSync(p)) {
-    throw new Error(`未找到 ${MANIFEST_REL}（在 ${repo}）。先跑 \`mk-harness init\`。`);
+    throw new Error(`未找到 ${MANIFEST_REL}（在 ${repo}）。先跑 \`harness-kit init\`。`);
   }
   return YAML.parse(readFileSync(p, "utf8")) as Manifest;
 }

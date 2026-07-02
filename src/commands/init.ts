@@ -18,7 +18,7 @@ capabilities:
   build:  { run: "pnpm build" }
   test:   { run: "pnpm test" }
   lint:   { run: "pnpm lint" }
-  verify: { run: "mk-harness verify" }
+  verify: { run: "harness-kit verify" }
 
 environment: []
 
@@ -77,14 +77,14 @@ export function initCmd(repo: string, name: string, force: boolean): void {
   writeText(join(repo, ".agents/adoption.md"), adoptionTemplate());
   ok("wrote .agents/adoption.md");
 
-  info("\nNext: edit .agents/manifest.yaml, then run `mk-harness sync`.");
+  info("\nNext: edit .agents/manifest.yaml, then run `harness-kit sync`.");
 }
 
 function adoptionTemplate(): string {
   return `# Tooling adoption log
 
 Earn heavier tooling with evidence. Default posture: prefer the lightest thing that works,
-and only promote a convention to a machine check (\`mk-harness verify\`) after it actually bites.
+and only promote a convention to a machine check (\`harness-kit verify\`) after it actually bites.
 
 ## When to promote a soft convention to an enforced invariant
 - The same mistake slipped through 3+ times, OR

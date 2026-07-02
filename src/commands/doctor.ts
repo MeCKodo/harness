@@ -51,9 +51,9 @@ export function doctorCmd(repo: string): number {
   info("\n3) Generated files drift");
   for (const [rel, content] of renderTargets(m)) {
     const cur = readText(join(repo, rel));
-    if (cur === null) warn(`${rel} not generated yet (run \`mk-harness sync\`)`);
+    if (cur === null) warn(`${rel} not generated yet (run \`harness-kit sync\`)`);
     else if (cur !== content) {
-      err(`${rel} drifted from manifest (run \`mk-harness sync\`)`);
+      err(`${rel} drifted from manifest (run \`harness-kit sync\`)`);
       problems++;
     } else ok(`${rel} in sync`);
   }
@@ -65,7 +65,7 @@ export function doctorCmd(repo: string): number {
   if (boundCount === 0) {
     ok("no knowledge bound to source files (nothing to drift)");
   } else if (!prev) {
-    warn("no baseline yet (run `mk-harness sync` to record)");
+    warn("no baseline yet (run `harness-kit sync` to record)");
   } else {
     let drift = 0;
     for (const [kp, files] of Object.entries(now.bindings)) {

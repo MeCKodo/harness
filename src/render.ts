@@ -23,7 +23,7 @@ export function renderAgentsMd(m: Manifest): string {
   L.push("## Working agreement (read first)", "");
   L.push(
     "This file and everything under `.agents/` are GENERATED from `.agents/manifest.yaml`. " +
-      "Do NOT edit them by hand — edit the manifest and run `mk-harness sync`.",
+      "Do NOT edit them by hand — edit the manifest and run `harness-kit sync`.",
     "",
   );
   L.push("Before you touch code:");
@@ -35,7 +35,7 @@ export function renderAgentsMd(m: Manifest): string {
   else L.push("2. Read the relevant files before editing. Do NOT full-repo grep and guess.");
   L.push("");
   L.push("Before you finish:");
-  L.push("3. Run `mk-harness verify`. It enforces the invariants below and prints a **GAPS** list of what it cannot check.");
+  L.push("3. Run `harness-kit verify`. It enforces the invariants below and prints a **GAPS** list of what it cannot check.");
   L.push(
     "4. **Never claim a check you didn't run.** If something is a GAP (packaging, real network, prod upload), say so — don't pretend it passed.",
   );
@@ -98,7 +98,7 @@ export function renderAgentsMd(m: Manifest): string {
       const how = inv.enforcement ? "enforced" : inv.check ? "checked" : "manual";
       L.push(`- ${inv.rule} [${how}]`);
     }
-    L.push("", "Run `mk-harness verify` to check the enforceable ones.", "");
+    L.push("", "Run `harness-kit verify` to check the enforceable ones.", "");
   }
 
   L.push("## Knowledge & maps (load on demand)", "");
@@ -159,6 +159,6 @@ ${GEN_HEADER()}
 
 Read \`AGENTS.md\` at the repo root for project scope, commands, environment,
 contracts, and invariants. It is the single source of truth (generated).
-Do not edit generated files; edit \`.agents/manifest.yaml\` then run \`mk-harness sync\`.
+Do not edit generated files; edit \`.agents/manifest.yaml\` then run \`harness-kit sync\`.
 `;
 }

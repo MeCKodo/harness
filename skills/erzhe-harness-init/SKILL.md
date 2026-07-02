@@ -1,28 +1,28 @@
 ---
-name: harness-onboard
-description: 给一个仓库接入 ai-harness —— 引导 agent 做仓库考古、把隐性工程知识翻译成 .agents/manifest.yaml，再用 sync/doctor/verify 把它验证到绿。当用户说"给这个仓库配置 harness / 初始化 AI 脚手架 / 生成 AGENTS.md 契约层"时使用。
+name: erzhe-harness-init
+description: 给一个仓库接入 harness-kit —— 引导 agent 做仓库考古、把隐性工程知识翻译成 .agents/manifest.yaml，再用 sync/doctor/verify 把它验证到绿。当用户说"给这个仓库配置 harness / 初始化 AI 脚手架 / 生成 AGENTS.md 契约层"时使用。
 ---
 
-# harness-onboard
+# erzhe-harness-init
 
-把**当前仓库**改造成 agent 友好：产出一份填好的 `.agents/manifest.yaml`，并让 `mk-harness doctor` healthy、`mk-harness verify` 退出码 0。
+把**当前仓库**改造成 agent 友好：产出一份填好的 `.agents/manifest.yaml`，并让 `harness-kit doctor` healthy、`harness-kit verify` 退出码 0。
 
 CLI 只负责机械骨架 + 确定性门禁；**理解仓库、把隐性知识翻译成结构化字段**是这个 skill 里 agent 的活。
 
-## 0. 定位 harness 命令
+## 0. 定位 harness-kit 命令
 
-按可用性择一，后续统一用 `mk-harness` 指代（包名 `@meckodo/harness`，bin 是 `mk-harness`）：
+按可用性择一，后续统一用 `harness-kit` 指代（包名 `@erzhe/harness-kit`，bin 是 `harness-kit`）：
 
-- 已全局安装：`mk-harness`
-- 未安装、临时用：`npx @meckodo/harness`
-- 在 ai-harness 仓内开发：`pnpm exec tsx src/cli.ts`
+- 已全局安装：`harness-kit`
+- 未安装、临时用：`npx @erzhe/harness-kit`
+- 在 harness-kit 仓内开发：`pnpm exec tsx src/cli.ts`
 
-先跑 `mk-harness --help` 确认可用。
+先跑 `harness-kit --help` 确认可用。
 
 ## 1. 铺骨架（若还没有 .agents/）
 
 ```
-mk-harness init --repo .
+harness-kit init --repo .
 ```
 
 生成 `.agents/{manifest.yaml, knowledge/, playbooks/, adoption.md}` 骨架。已存在则跳过，直接进第 2 步补全。
@@ -35,7 +35,7 @@ mk-harness init --repo .
 - 能自动验证的就给命令（`enforcement` 正则 / 契约 `snapshot`）；验证不了的**诚实标 `manual`**，别假装能检查。
 - `AGENTS.md` 有体量预算（150 行 / 700 词）——细节沉到 `.agents/`，manifest 里写精选。
 
-按顺序逐块填 `.agents/manifest.yaml`（schema 见 ai-harness 的 `SPEC-v0.md`）：
+按顺序逐块填 `.agents/manifest.yaml`（schema 见 harness-kit 的 `SPEC-v0.md`）：
 
 1. **identity**：读 `README` / `package.json` / 顶层目录。填 `name`、一句话 `summary`、`scope_in` / `scope_out`（哪些该改、哪些别碰）、`upstream` / `downstream`。
 2. **capabilities**：从 `package.json` scripts、`Makefile`、`justfile`、CI 配置推断常用命令（setup / build / test / dev / lint / release）。给 `run`；长驻的标 `background: true`，有副作用的标 `mutating: true`。
@@ -49,24 +49,24 @@ mk-harness init --repo .
 ## 3. 生成 + 验证到绿
 
 ```
-mk-harness sync            # manifest -> AGENTS.md / CLAUDE.md / .cursor 规则 / routing.md / modules.md
-mk-harness doctor          # 补全度 / 引用路径 / 漂移 / 新鲜度 / 体量预算；按报告修
-mk-harness verify          # 门禁：跑不变量 + 契约 + 漂移，并列出 GAPS
+harness-kit sync            # manifest -> AGENTS.md / CLAUDE.md / .cursor 规则 / routing.md / modules.md
+harness-kit doctor          # 补全度 / 引用路径 / 漂移 / 新鲜度 / 体量预算；按报告修
+harness-kit verify          # 门禁：跑不变量 + 契约 + 漂移，并列出 GAPS
 ```
 
 - `doctor` 报路径不存在 → 修 manifest 里的路径。
 - 对有 `snapshot` 的契约，`verify` 会提示"baseline not set"：确认当前接口即为期望后，跑
   ```
-  mk-harness accept-contract --repo .
+  harness-kit accept-contract --repo .
   ```
   建立基线（这个 `.agents/contracts/*.snapshot` 要提交进 git）。
 - 迭代到 **`doctor` healthy 且 `verify` 退出码 0**。
 
 ## 4. 收尾检查（交付前）
 
-- `mk-harness verify` 退出码 0；`GAPS` 段里每一条都是**真的没法自动查**（打包 / 真网络 / 生产上传 / 人肉不变量），不是偷懒。
+- `harness-kit verify` 退出码 0；`GAPS` 段里每一条都是**真的没法自动查**（打包 / 真网络 / 生产上传 / 人肉不变量），不是偷懒。
 - `AGENTS.md` 在体量预算内（`doctor` 第 6 项会报行数/词数）。
-- 把生成物 + `.agents/` + 契约基线一起提交；告诉用户：**以后改 manifest → `mk-harness sync`，别手改生成物**；把 `mk-harness verify` 挂进 CI / pre-commit 才能真正兑现"跨人跨机一致"。
+- 把生成物 + `.agents/` + 契约基线一起提交；告诉用户：**以后改 manifest → `harness-kit sync`，别手改生成物**；把 `harness-kit verify` 挂进 CI / pre-commit 才能真正兑现"跨人跨机一致"。
 
 ## 反模式（别做）
 

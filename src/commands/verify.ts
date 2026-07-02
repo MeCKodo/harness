@@ -23,10 +23,10 @@ export function verifyCmd(repo: string): number {
   for (const [rel, content] of renderTargets(m)) {
     const cur = readText(join(repo, rel));
     if (cur === null) {
-      err(`${rel} missing (run \`mk-harness sync\`)`);
+      err(`${rel} missing (run \`harness-kit sync\`)`);
       failures++;
     } else if (cur !== content) {
-      err(`${rel} drifted from manifest (run \`mk-harness sync\`)`);
+      err(`${rel} drifted from manifest (run \`harness-kit sync\`)`);
       failures++;
     } else ok(`${rel}`);
   }
@@ -78,11 +78,11 @@ export function verifyCmd(repo: string): number {
         } else {
           const base = readBaseline(repo, c.id);
           if (base === null) {
-            warn(`${c.id}: snapshot baseline not set — run \`mk-harness accept-contract --id ${c.id}\``);
+            warn(`${c.id}: snapshot baseline not set — run \`harness-kit accept-contract --id ${c.id}\``);
           } else if (base !== cap.stdout) {
             failures++;
             err(`${c.id}: contract drifted from baseline${c.breaking_needs ? ` (breaking -> ${c.breaking_needs})` : ""}`);
-            info(`       if intended: bump version, then \`mk-harness accept-contract --id ${c.id}\``);
+            info(`       if intended: bump version, then \`harness-kit accept-contract --id ${c.id}\``);
           } else ok(`${c.id} (snapshot)`);
         }
       }

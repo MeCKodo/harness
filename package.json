@@ -1,8 +1,8 @@
 {
-  "name": "@meckodo/harness",
+  "name": "@erzhe/harness-kit",
   "version": "0.1.0",
   "type": "module",
-  "description": "AI-friendly repo harness: a manifest.yaml single source of truth that generates AGENTS.md / CLAUDE.md / Cursor rules and enforces invariants, contracts and drift via `harness verify`.",
+  "description": "AI-friendly repo harness: a manifest.yaml single source of truth that generates AGENTS.md / CLAUDE.md / Cursor rules and enforces invariants, contracts and drift via `harness-kit verify`.",
   "keywords": [
     "ai",
     "agent",
@@ -14,13 +14,13 @@
     "cursor",
     "claude"
   ],
-  "homepage": "https://github.com/MeCKodo/harness#readme",
+  "homepage": "https://github.com/MeCKodo/harness-kit#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MeCKodo/harness.git"
+    "url": "git+https://github.com/MeCKodo/harness-kit.git"
   },
   "bugs": {
-    "url": "https://github.com/MeCKodo/harness/issues"
+    "url": "https://github.com/MeCKodo/harness-kit/issues"
   },
   "author": "MeCKodo (二哲) <https://erzhe.me/>",
   "license": "MIT",
@@ -28,7 +28,7 @@
     "node": ">=18"
   },
   "bin": {
-    "mk-harness": "dist/mk-harness.cjs"
+    "harness-kit": "dist/harness-kit.cjs"
   },
   "files": [
     "dist",
@@ -41,7 +41,7 @@
   },
   "scripts": {
     "harness": "tsx src/cli.ts",
-    "build": "esbuild src/cli.ts --bundle --platform=node --format=cjs --target=node18 --outfile=dist/mk-harness.cjs && chmod +x dist/mk-harness.cjs",
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=cjs --target=node18 --outfile=dist/harness-kit.cjs && chmod +x dist/harness-kit.cjs",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
     "prepare": "pnpm build"
