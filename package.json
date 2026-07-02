@@ -36,7 +36,8 @@
     "SPEC-v0.md"
   ],
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "harness": "tsx src/cli.ts",
