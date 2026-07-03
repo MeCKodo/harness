@@ -14,6 +14,9 @@
 
 agent 会拉取**最新版**的 onboard skill 并照着做：仓库考古 → 逐块跟你确认着填 `.agents/manifest.yaml` → `sync` / `doctor` / `verify` 到绿。全程走 `npx`，不往机器上装任何全局东西；你一发新版，所有人下次执行就用上了。
 
+> 注：若你的 npm 默认源不是 npmjs（如公司内网镜像），先一次性把这个 scope 指向公共源，`npx` 才拉得到：
+> `npm config set @erzhe:registry https://registry.npmjs.org`
+
 ## 为什么
 
 传统工程化（脚手架 / lint / CI）是**面向过去、面向人**的。Agent 需要的是显式、结构化、可机器消费的知识：这个仓库是什么、能跑什么、什么绝不能破、改动该看哪、哪些验证不了。`harness-kit` 把这些沉淀进 manifest，再确定性地生成与校验。
