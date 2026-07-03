@@ -6,7 +6,6 @@ export function renderTargets(m: Manifest): Array<[string, string]> {
   const targets: Array<[string, string]> = [
     ["AGENTS.md", renderAgentsMd(m)],
     ["CLAUDE.md", renderClaudeMd()],
-    [".cursor/rules/00-follow-agents.mdc", renderCursorRule()],
   ];
   if (m.routing?.length) targets.push([".agents/routing.md", renderRoutingMd(m)]);
   if (m.modules?.length) targets.push([".agents/modules.md", renderModulesMd(m)]);
@@ -148,17 +147,4 @@ export function renderModulesMd(m: Manifest): string {
 export function renderClaudeMd(): string {
   // Claude Code reads the first-line @import; keep it first.
   return `@AGENTS.md\n\n${GEN_HEADER()}\n`;
-}
-
-export function renderCursorRule(): string {
-  return `---
-description: Follow the repo AGENTS.md (generated from .agents/manifest.yaml)
-alwaysApply: true
----
-${GEN_HEADER()}
-
-Read \`AGENTS.md\` at the repo root for project scope, commands, environment,
-contracts, and invariants. It is the single source of truth (generated).
-Do not edit generated files; edit \`.agents/manifest.yaml\` then run \`harness-kit sync\`.
-`;
 }

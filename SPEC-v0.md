@@ -29,7 +29,6 @@
 <repo>/
   AGENTS.md                          # [生成] 跨工具入口，<100 行，指路
   CLAUDE.md                          # [生成] 首行 @AGENTS.md
-  .cursor/rules/00-follow-agents.mdc # [生成] 薄适配器
   .agents/                           # canonical 命名空间（唯一手写源）
     manifest.yaml                    # 脊椎（本规范核心，见 §3）
     knowledge/                       # 手写叙述：domain / conventions / journal
@@ -142,7 +141,6 @@ playbooks:
 generate:
   - to: "AGENTS.md"                       render: "identity+capabilities+environment+invariants"
   - to: "CLAUDE.md"                       content: "@AGENTS.md"
-  - to: ".cursor/rules/00-follow-agents.mdc"  template: "adapter"
 ```
 
 **保留动词说明**：`capabilities` 的保留动词全部**可选**——它是一套"共享词汇表"，仓库只声明适用的子集（库通常没有 `run`；前端 `run` 是 dev server 且 `background: true`）。Agent 冷启动时能预期这些词的语义。

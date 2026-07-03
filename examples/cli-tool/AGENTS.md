@@ -42,7 +42,7 @@ Downstream: 使用者的终端 / CI 流水线
 - `run`: `node bin/acme-deploy` — 无参数无意义，须带子命令
   - example: `acme-deploy up --env staging --service web`
 - `smoke`: `pnpm smoke` — 对 fixture 集群跑一遍冒烟
-- `verify`: `harness-kit verify`
+- `verify`: `harness verify`
 - `release`: `pnpm release` — 发布新版本 bin (mutating — confirm first)
 
 ## Environment

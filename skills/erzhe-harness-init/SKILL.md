@@ -49,7 +49,7 @@ harness-kit init --repo .
 ## 3. 生成 + 验证到绿
 
 ```
-harness-kit sync            # manifest -> AGENTS.md / CLAUDE.md / .cursor 规则 / routing.md / modules.md
+harness-kit sync            # manifest -> AGENTS.md / CLAUDE.md / routing.md / modules.md
 harness-kit doctor          # 补全度 / 引用路径 / 漂移 / 新鲜度 / 体量预算；按报告修
 harness-kit verify          # 门禁：跑不变量 + 契约 + 漂移，并列出 GAPS
 ```

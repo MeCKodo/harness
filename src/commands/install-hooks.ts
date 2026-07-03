@@ -22,7 +22,7 @@ if ! $HK sync --repo . >/dev/null; then
   echo "harness-kit: sync failed (run \\\`$HK sync\\\` to see why)" >&2
   exit 1
 fi
-git add AGENTS.md CLAUDE.md .cursor/rules .agents >/dev/null 2>&1 || true
+git add AGENTS.md CLAUDE.md .agents >/dev/null 2>&1 || true
 exit 0
 `;
 }

@@ -20,7 +20,7 @@ function guard(fn: () => void | number): void {
 }
 
 const program = new Command();
-program.name("harness-kit").description("AI-friendly repo harness").version("0.1.2");
+program.name("harness-kit").description("AI-friendly repo harness").version("0.1.3");
 
 const repoOf = (o: { repo: string }) => resolve(o.repo);
 
@@ -34,7 +34,7 @@ program
 
 program
   .command("sync")
-  .description("generate tool files (AGENTS.md, CLAUDE.md, .cursor rules) from manifest")
+  .description("generate tool files (AGENTS.md, CLAUDE.md) from manifest")
   .option("-C, --repo <dir>", "target repo dir", process.cwd())
   .action((o) => guard(() => syncCmd(repoOf(o))));
 

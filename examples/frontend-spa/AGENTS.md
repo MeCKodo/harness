@@ -43,7 +43,7 @@ Downstream: 终端用户浏览器, CDN（构建产物托管）
 - `lint`: `pnpm lint`
 - `test`: `pnpm test` — Vitest 单测
 - `e2e`: `pnpm e2e` — Playwright 端到端
-- `verify`: `harness-kit verify`
+- `verify`: `harness verify`
 
 ## Environment
 

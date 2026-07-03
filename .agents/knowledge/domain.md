@@ -1,7 +1,7 @@
 # ai-harness — domain
 
 把"仓库的工程知识"变成一份 agent 可消费的单一真相源 `.agents/manifest.yaml`，
-由 CLI 派生出各工具文件（AGENTS.md / CLAUDE.md / Cursor rules），并用可执行门禁保证一致。
+由 CLI 派生出各工具文件（AGENTS.md / CLAUDE.md），并用可执行门禁保证一致。
 
 ## 核心机制
 - **单一真相源**：手写只在 `.agents/`；`AGENTS.md` 等一律生成，带 DO-NOT-EDIT 头，改要改 manifest 再 `sync`。

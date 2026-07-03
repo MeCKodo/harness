@@ -1,14 +1,14 @@
 {
   "bindings": {
     "knowledge/domain.md": {
-      "src/cli.ts": "4fcbec80b0d9d8d60cab8dee67b72dfef9c823f57eac4054794dd1058dbf6613",
+      "src/cli.ts": "48a2e705692484508121aebaaf5245350f6997385a09eb53849e4239ed4bec1a",
       "src/manifest.ts": "d86bd4abee4ee2e79633a0473855d90f2a4a97728011fb56c28fd407204f31ab"
     },
     "module:cli": {
-      "src/cli.ts": "4fcbec80b0d9d8d60cab8dee67b72dfef9c823f57eac4054794dd1058dbf6613"
+      "src/cli.ts": "48a2e705692484508121aebaaf5245350f6997385a09eb53849e4239ed4bec1a"
     },
     "module:render": {
-      "src/render.ts": "ed756b85e69be2d615757ab4acd6ffec77638505dc17840ecdc494d8425b4a84"
+      "src/render.ts": "bef9fe30b9204f8b4232227c0020c753508309ca7011777707c26b8d76c22b27"
     },
     "module:enforce": {
       "src/enforce.ts": "732b599b0e5ee0a541d4a0ae81580a2c993ad261cf20196a3a8f4063882344b9"

@@ -20,6 +20,8 @@ test("AGENTS.md carries the GEN header, the working agreement and commands", () 
 test("renderTargets omits routing/modules when absent and adds them when present", () => {
   const bare = renderTargets(base).map((t) => t[0]);
   assert.ok(bare.includes("AGENTS.md"));
+  assert.ok(bare.includes("CLAUDE.md"));
+  assert.ok(!bare.some((p) => p.includes(".cursor")));
   assert.ok(!bare.includes(".agents/routing.md"));
   assert.ok(!bare.includes(".agents/modules.md"));
 

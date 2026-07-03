@@ -8,8 +8,8 @@ Options:
 
 Commands:
   init [options]             scaffold .agents/ skeleton + starter manifest
-  sync [options]             generate tool files (AGENTS.md, CLAUDE.md, .cursor
-                             rules) from manifest
+  sync [options]             generate tool files (AGENTS.md, CLAUDE.md) from
+                             manifest
   doctor [options]           dev-time health check: completeness, drift,
                              freshness, tech debt
   verify [options]           CI gate: run enforceable invariants + contracts +

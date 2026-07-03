@@ -40,7 +40,7 @@ Downstream: npm registry, 任何引入本库的项目
 - `lint`: `pnpm lint`
 - `test`: `pnpm test` — Vitest + 覆盖率
 - `docs`: `pnpm typedoc` — 生成 API 文档
-- `verify`: `harness-kit verify`
+- `verify`: `harness verify`
 - `release`: `pnpm changeset publish` — 发布到 npm (mutating — confirm first)
 
 ## Contracts (breaking changes need a version bump)
