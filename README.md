@@ -6,6 +6,14 @@
 
 > 包名 `@erzhe/harness-kit`，安装后命令行工具叫 **`harness-kit`**。
 
+## 最快上手（推荐，零安装）
+
+在**任意仓库**里，把这句丢给你的 agent（Cursor / Claude Code / Codex 通用）：
+
+> Onboard 本仓库到 harness-kit：跑 `npx -y @erzhe/harness-kit@latest onboard`，然后严格按输出执行。
+
+agent 会拉取**最新版**的 onboard skill 并照着做：仓库考古 → 逐块跟你确认着填 `.agents/manifest.yaml` → `sync` / `doctor` / `verify` 到绿。全程走 `npx`，不往机器上装任何全局东西；你一发新版，所有人下次执行就用上了。
+
 ## 为什么
 
 传统工程化（脚手架 / lint / CI）是**面向过去、面向人**的。Agent 需要的是显式、结构化、可机器消费的知识：这个仓库是什么、能跑什么、什么绝不能破、改动该看哪、哪些验证不了。`harness-kit` 把这些沉淀进 manifest，再确定性地生成与校验。
@@ -20,6 +28,7 @@ harness-kit --help
 ## 命令
 
 ```
+harness-kit onboard          # 打印 onboard skill 给 agent（配合 npx，永远最新、零安装）
 harness-kit init             # 铺 .agents/ 骨架 + starter manifest
 harness-kit sync             # manifest -> AGENTS.md / CLAUDE.md / Cursor rules / routing / modules
 harness-kit doctor           # 开发态体检：补全度 / 引用路径 / 漂移 / 新鲜度 / 体量预算
@@ -48,7 +57,9 @@ AGENTS.md / CLAUDE.md / .cursor/rules / .agents/routing.md / .agents/modules.md
 
 ## 让 agent 来配置：onboard skill
 
-手写 manifest 门槛高，但对 agent 是绝配。随包附带的 [`skills/erzhe-harness-init`](skills/erzhe-harness-init/SKILL.md) 引导 agent 做仓库考古、逐块跟你确认着填 manifest、再跑 `sync/doctor/verify` 到绿。把它软链到 `~/.cursor/skills/` 或 `~/.claude/skills/` 即可被发现。
+手写 manifest 门槛高，但对 agent 是绝配。随包附带的 [`skills/erzhe-harness-init`](skills/erzhe-harness-init/SKILL.md) 引导 agent 做仓库考古、逐块跟你确认着填 manifest、再跑 `sync/doctor/verify` 到绿。
+
+最省事的用法就是上面的 [最快上手](#最快上手推荐零安装)——`npx ... onboard` 把 skill 打印给 agent，零安装、永远最新。若想让某个 agent **自动触发**（不用每次点名），可选地把 skill 软链进它的 skill 目录：`ln -sf "$(npm root -g)/@erzhe/harness-kit/skills/erzhe-harness-init" ~/.cursor/skills/`。
 
 ## 文档
 

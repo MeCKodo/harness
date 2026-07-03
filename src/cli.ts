@@ -6,6 +6,7 @@ import { syncCmd } from "./commands/sync";
 import { doctorCmd } from "./commands/doctor";
 import { verifyCmd } from "./commands/verify";
 import { acceptContractCmd } from "./commands/accept";
+import { onboardCmd } from "./commands/onboard";
 
 function guard(fn: () => void | number): void {
   try {
@@ -18,7 +19,7 @@ function guard(fn: () => void | number): void {
 }
 
 const program = new Command();
-program.name("harness-kit").description("AI-friendly repo harness").version("0.1.0");
+program.name("harness-kit").description("AI-friendly repo harness").version("0.1.1");
 
 const repoOf = (o: { repo: string }) => resolve(o.repo);
 
@@ -54,5 +55,10 @@ program
   .option("-C, --repo <dir>", "target repo dir", process.cwd())
   .option("--id <id>", "only this contract (default: all with a snapshot command)")
   .action((o) => guard(() => acceptContractCmd(repoOf(o), o.id)));
+
+program
+  .command("onboard")
+  .description("print the erzhe-harness-init skill for an agent to follow (use via npx, always latest)")
+  .action(() => guard(() => onboardCmd()));
 
 program.parseAsync();

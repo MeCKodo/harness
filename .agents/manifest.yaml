@@ -4,7 +4,7 @@ identity:
   name: ai-harness
   summary: AI-friendly repo harness CLI —— 把工程知识变成 agent 可消费的 manifest，生成各工具文件并用门禁保证一致
   scope_in:
-    - CLI 命令 init / sync / doctor / verify（src/）
+    - CLI 命令 init / sync / doctor / verify / onboard（src/）
     - manifest schema + 生成器 + 声明式不变量执行 + 派生新鲜度
   scope_out:
     - 目标仓库自身的业务代码（本工具只读它们的 .agents/manifest.yaml）
@@ -22,7 +22,7 @@ capabilities:
 contracts:
   - id: cli-interface
     kind: cli-interface
-    desc: init/sync/doctor/verify/accept-contract 命令 + flags；改动即影响所有使用者
+    desc: init/sync/doctor/verify/accept-contract/onboard 命令 + flags；改动即影响所有使用者
     breaking_needs: minor
     snapshot: "pnpm exec tsx src/cli.ts --help"
   - id: manifest-schema

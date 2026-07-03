@@ -1,6 +1,6 @@
 {
   "name": "@erzhe/harness-kit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "AI-friendly repo harness: a manifest.yaml single source of truth that generates AGENTS.md / CLAUDE.md / Cursor rules and enforces invariants, contracts and drift via `harness-kit verify`.",
   "keywords": [
@@ -41,7 +41,7 @@
   },
   "scripts": {
     "harness": "tsx src/cli.ts",
-    "build": "esbuild src/cli.ts --bundle --platform=node --format=cjs --target=node18 --outfile=dist/harness-kit.cjs && chmod +x dist/harness-kit.cjs",
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=cjs --target=node18 --log-override:empty-import-meta=silent --outfile=dist/harness-kit.cjs && chmod +x dist/harness-kit.cjs",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
     "test:repos": "bash scripts/regression.sh",

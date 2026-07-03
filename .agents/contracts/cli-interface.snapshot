@@ -16,4 +16,6 @@ Commands:
                              drift; nonzero on failure
   accept-contract [options]  record current contract fingerprint(s) as the
                              accepted baseline (after an intended change)
+  onboard                    print the erzhe-harness-init skill for an agent to
+                             follow (use via npx, always latest)
   help [command]             display help for command
