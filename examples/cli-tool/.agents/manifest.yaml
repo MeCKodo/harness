@@ -24,7 +24,7 @@ capabilities:
   lint:   { run: "pnpm lint" }
   run:    { run: "node bin/acme-deploy", example: "acme-deploy up --env staging --service web", desc: "无参数无意义，须带子命令" }
   smoke:  { run: "pnpm smoke", desc: "对 fixture 集群跑一遍冒烟" }
-  verify: { run: "harness verify" }
+  verify: { run: "harness-kit verify" }
   release: { run: "pnpm release", desc: "发布新版本 bin", mutating: true }
 
 environment:

@@ -16,7 +16,7 @@ capabilities:
   setup:     { run: "pnpm install" }
   typecheck: { run: "pnpm typecheck", desc: "tsc --noEmit" }
   test:      { run: "pnpm test", desc: "node:test + tsx 核心单测（enforce/state/render/contracts/manifest）" }
-  build:     { run: "pnpm build", desc: "esbuild 打包成 dist/harness.cjs 单文件可执行（bin 入口）" }
+  build:     { run: "pnpm build", desc: "esbuild 打包成 dist/harness-kit.cjs 单文件可执行（bin 入口）" }
   harness:   { run: "pnpm exec tsx src/cli.ts", desc: "跑 CLI（开发态）", example: "pnpm exec tsx src/cli.ts verify --repo ." }
 
 contracts:

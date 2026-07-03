@@ -13,7 +13,7 @@ capabilities:
   build:  { run: "pnpm build" }
   test:   { run: "pnpm test" }
   lint:   { run: "pnpm lint" }
-  verify: { run: "harness verify" }
+  verify: { run: "harness-kit verify" }
 
 environment: []
 

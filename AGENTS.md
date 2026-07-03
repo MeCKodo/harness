@@ -36,7 +36,7 @@ Downstream: 任何被 harness 初始化的仓库
 - `setup`: `pnpm install`
 - `typecheck`: `pnpm typecheck` — tsc --noEmit
 - `test`: `pnpm test` — node:test + tsx 核心单测（enforce/state/render/contracts/manifest）
-- `build`: `pnpm build` — esbuild 打包成 dist/harness.cjs 单文件可执行（bin 入口）
+- `build`: `pnpm build` — esbuild 打包成 dist/harness-kit.cjs 单文件可执行（bin 入口）
 - `harness`: `pnpm exec tsx src/cli.ts` — 跑 CLI（开发态）
   - example: `pnpm exec tsx src/cli.ts verify --repo .`
 
