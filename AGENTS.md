@@ -20,7 +20,7 @@ Before you finish:
 ## Scope
 
 In scope:
-- CLI 命令 init / sync / doctor / verify / onboard（src/）
+- CLI 命令 init / sync / doctor / verify / accept-contract / install-hooks / onboard（src/）
 - manifest schema + 生成器 + 声明式不变量执行 + 派生新鲜度
 
 Out of scope (do NOT modify here):
@@ -42,7 +42,7 @@ Downstream: 任何被 harness 初始化的仓库
 
 ## Contracts (breaking changes need a version bump)
 
-- cli-interface [cli-interface] (breaking -> minor): init/sync/doctor/verify/accept-contract/onboard 命令 + flags；改动即影响所有使用者
+- cli-interface [cli-interface] (breaking -> minor): init/sync/doctor/verify/accept-contract/install-hooks/onboard 命令 + flags；改动即影响所有使用者
 - manifest-schema [other] (breaking -> major): .agents/manifest.yaml 的 schema（见 SPEC-v0.md）；删字段/改语义会破坏已初始化的仓
 
 ## Invariants (must hold)

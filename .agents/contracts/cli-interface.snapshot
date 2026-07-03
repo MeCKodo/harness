@@ -16,6 +16,8 @@ Commands:
                              drift; nonzero on failure
   accept-contract [options]  record current contract fingerprint(s) as the
                              accepted baseline (after an intended change)
+  install-hooks [options]    install git hooks: pre-commit auto-sync + pre-push
+                             verify (drift gate)
   onboard                    print the erzhe-harness-init skill for an agent to
                              follow (use via npx, always latest)
   help [command]             display help for command

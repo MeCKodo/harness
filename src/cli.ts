@@ -6,6 +6,7 @@ import { syncCmd } from "./commands/sync";
 import { doctorCmd } from "./commands/doctor";
 import { verifyCmd } from "./commands/verify";
 import { acceptContractCmd } from "./commands/accept";
+import { installHooksCmd } from "./commands/install-hooks";
 import { onboardCmd } from "./commands/onboard";
 
 function guard(fn: () => void | number): void {
@@ -19,7 +20,7 @@ function guard(fn: () => void | number): void {
 }
 
 const program = new Command();
-program.name("harness-kit").description("AI-friendly repo harness").version("0.1.1");
+program.name("harness-kit").description("AI-friendly repo harness").version("0.1.2");
 
 const repoOf = (o: { repo: string }) => resolve(o.repo);
 
@@ -55,6 +56,13 @@ program
   .option("-C, --repo <dir>", "target repo dir", process.cwd())
   .option("--id <id>", "only this contract (default: all with a snapshot command)")
   .action((o) => guard(() => acceptContractCmd(repoOf(o), o.id)));
+
+program
+  .command("install-hooks")
+  .description("install git hooks: pre-commit auto-sync + pre-push verify (drift gate)")
+  .option("-C, --repo <dir>", "target repo dir", process.cwd())
+  .option("--force", "overwrite existing hooks", false)
+  .action((o) => guard(() => installHooksCmd(repoOf(o), o.force)));
 
 program
   .command("onboard")
