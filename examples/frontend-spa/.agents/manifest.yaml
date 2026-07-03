@@ -27,7 +27,7 @@ capabilities:
   lint:      { run: "pnpm lint" }
   test:      { run: "pnpm test", desc: "Vitest 单测" }
   e2e:       { run: "pnpm e2e", desc: "Playwright 端到端" }
-  verify:    { run: "harness-kit verify" }
+  verify:    { run: "harness verify" }
 
 environment:
   - name: VITE_API_BASE_URL

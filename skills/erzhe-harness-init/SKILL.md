@@ -40,9 +40,9 @@ harness-kit init --repo .
 1. **identity**：读 `README` / `package.json` / 顶层目录。填 `name`、一句话 `summary`、`scope_in` / `scope_out`（哪些该改、哪些别碰）、`upstream` / `downstream`。
 2. **capabilities**：从 `package.json` scripts、`Makefile`、`justfile`、CI 配置推断常用命令（setup / build / test / dev / lint / release）。给 `run`；长驻的标 `background: true`，有副作用的标 `mutating: true`。
 3. **environment**：从 `.env.example` / README 抓关键环境变量。危险的标 `secret: true`、必需的标 `required: true`。
-4. **contracts**：识别对外接口——HTTP 路由文件、CLI flags、导出的公共 API、proto/schema、事件。**尽量给 `snapshot` 命令**（打印当前接口指纹到 stdout，如 `grep -oE '"/api/[^"]*"' src/routes.ts | sort -u`），CLI 会存基线并 diff。给不出自动检查的填 `manual_verify` 说明。
+4. **contracts**：识别对外接口——HTTP 路由文件、CLI flags、导出的公共 API、proto/schema/IDL、事件。**尽量给 `snapshot` 命令**（打印当前接口指纹到 stdout，如 `grep -oE '"/api/[^"]*"' src/routes.ts | sort -u`），CLI 会存基线并 diff。给不出自动检查的填 `manual_verify` 说明（进 GAPS）。两条纪律：(a) **过滤注释/生成物噪音**——配置里被注释掉的示例条目会污染指纹、日后清注释误报 drift，必要时先 `sed 's://.*::'` 剥注释再抓；(b) **命令含引号/正则/管道就下沉到 `.agents/checks/<id>.sh`**（脚本里 `cd` 到仓库根 + `LC_ALL=C` 保跨机字节一致），manifest 里写 `snapshot: bash .agents/checks/<id>.sh`——比把转义地狱硬塞进 YAML 干净，过滤规则也可 review。
 5. **invariants**：从 `CONTRIBUTING` / 现有 `AGENTS.md` / 代码约定提炼"必须始终成立"的规则。**能写成正则的用 `enforcement`**（`forbid_pattern` / `require_pattern` + `path_glob` 限定作用域，glob 是 include-only）；否则标 `manual: true`。
-6. **modules**：主要子系统各写一张模块卡：`role`、`entry`（入口文件，也用于新鲜度绑定）、`upstream` / `downstream`、`must_know`、`pitfalls`（常见坑——最高价值的一栏）。
+6. **modules**：主要子系统各写一张模块卡：`role`、`entry`、`upstream` / `downstream`、`must_know`、`pitfalls`（常见坑——最高价值的一栏）。⚠️ `entry`（以及 knowledge 的 `binds`）必须指到**具体文件**（如 `src/index.ts`），**不能是目录**——它要 hash 文件内容做新鲜度绑定；`routing.read` 用目录则 OK。
 7. **routing**：把常见改动类型（修 bug / 加接口 / 改 UI / 动权限 / 发版…）各写一行：`read`（先读哪些文件）、`entry`、`dont_assume`（别瞎猜什么）、`verify`（最少验证步骤，引用 capability 动词或原始命令）。
 8. **knowledge**：把 agent 从代码推断不出来的东西写进 `.agents/knowledge/`；重要决策建一篇 journal ADR（`knowledge/journal/NNNN-*.md`）。用 `binds` 把知识条目绑定到源文件，源文件变了会触发新鲜度告警。**只沉淀非显然的知识，别记一次性噪音或代码里显而易见的东西。**
 

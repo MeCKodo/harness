@@ -2,3 +2,11 @@ node_modules/
 dist/
 *.log
 .DS_Store
+
+# Local design notes — kept out of the public repo.
+/DESIGN.md
+
+# Local real-repo regression fixtures — NEVER commit.
+# Slimmed copies of internal repos, used only to check that harness-kit
+# upgrades don't break real project shapes. Local-only, never pushed.
+/fixtures/

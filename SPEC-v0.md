@@ -152,12 +152,12 @@ generate:
 ## 4. 生成契约（`sync`）
 
 - `manifest.yaml` + `.agents/**` 是唯一手写源。
-- `harness-kit sync` 幂等地渲染出 `generate` 列出的所有工具文件，顶部写 DO-NOT-EDIT 头。
+- `harness sync` 幂等地渲染出 `generate` 列出的所有工具文件，顶部写 DO-NOT-EDIT 头。
 - 生成文件不进人工编辑；要改就改 manifest 再 sync。
 
 ## 5. 校验契约（`doctor` / `verify`）
 
-`harness-kit doctor`（开发期体检，尽量确定性）：
+`harness doctor`（开发期体检，尽量确定性）：
 1. manifest 结构合法（对 schema）。
 2. 所有引用的 path / check 脚本 / binds 源文件**存在**。
 3. `capabilities` 命令可解析（可选 dry-run）。
@@ -165,12 +165,14 @@ generate:
 5. 新鲜度：`knowledge.binds` 的源文件 hash 变了 → 报 drift；`invariants` 里 `manual:true` 的计入"待补门禁"技术债并给出数量。
 6. **AGENTS.md 体量预算**：生成的 `AGENTS.md` 超过 ~150 行 / ~700 词告警。渐进式披露——入口只指路，细节放 `.agents/` 按需加载，绝不让 Agent 读不完。
 
-`harness-kit verify`（CI 门禁，全确定性）= 所有 `invariants` 的 `enforcement`/`check` + `contracts.check` + `capabilities.verify` + "生成物无漂移"。任一失败即 fail。
+`harness-kit verify`（CI 门禁，全确定性）= 所有 `invariants` 的 `enforcement`/`check` + `contracts` 的 `check`/`snapshot` + "生成物无漂移"。任一失败即 fail。
+
+> **`verify` 不执行任何 `capabilities`**。`capabilities.verify` 只是给人 / agent 看的"如何验证本仓"指针；若真去执行会与自身无限递归。声明为 `mutating` / `background` 的 capability 一律进 GAPS（诚实标注"未在门禁里跑"），不实跑。所以放心声明 `setup: rush install`、`build: go build` 等——`verify` 不会在无网 / 无依赖环境里去跑它们。
 
 **契约校验（v0.2，协议无关）**：契约的破坏检测有两条互补路径，CLI **不理解任何协议语义**，只当调度器 + 基线框架：
 - `check`：仓库自带的破坏检测工具（HTTP → `oasdiff`；gRPC/protobuf → `buf breaking`；库 → `api-extractor`；CLI → 自写脚本），exit 0 = 兼容。CLI 只 `execSync` 看退出码。
 - `snapshot`：仓库给一条**打印契约当前指纹到 stdout** 的命令（HTTP 打印 openapi / 抓路由；库打印 API 报告；CLI 打印 `--help`）。CLI 把 stdout 存成基线 `.agents/contracts/<id>.snapshot`，`verify` 时重新打印再 diff：一致=过，**漂移=fail**，无基线=提示先 `accept-contract`。这套 snapshot+baseline 与"生成物漂移检测"同一心智，复用于任何形态。
-- 有意变更契约时，显式跑 `harness-kit accept-contract [--id <id>]` 更新基线——**与 `sync` 分开**，杜绝破坏被悄悄盖章。
+- 有意变更契约时，显式跑 `harness accept-contract [--id <id>]` 更新基线——**与 `sync` 分开**，杜绝破坏被悄悄盖章。
 
 **GAPS 报告（v0.2）**：`verify` 末尾输出一段"这里查不了"的显式清单，把以下三类**从散落的 WARN 收拢成一等公民**：
 - `manual: true` 的 invariant（软约定，计技术债）；
@@ -197,10 +199,10 @@ GAPS 不计入失败，但会打印数量（`verify: OK (N gap(s))`）。配套*
 
 | 命令 | 作用 |
 | --- | --- |
-| `harness-kit init` | 往当前 repo 注入 `.agents/` 骨架 + 交互式填 manifest 关键字段 |
-| `harness-kit sync` | manifest → 生成各工具文件（幂等，带 DO-NOT-EDIT 头） |
-| `harness-kit doctor` | 开发期体检：完整性 + 漂移 + 新鲜度 + 技术债 |
-| `harness-kit verify` | CI 门禁：跑全部可执行 checks，任一失败即 fail |
-| `harness-kit accept-contract [--id]` | 把当前契约指纹记为已接受基线（有意变更后显式跑，与 sync 分开） |
+| `harness init` | 往当前 repo 注入 `.agents/` 骨架 + 交互式填 manifest 关键字段 |
+| `harness sync` | manifest → 生成各工具文件（幂等，带 DO-NOT-EDIT 头） |
+| `harness doctor` | 开发期体检：完整性 + 漂移 + 新鲜度 + 技术债 |
+| `harness verify` | CI 门禁：跑全部可执行 checks，任一失败即 fail |
+| `harness accept-contract [--id]` | 把当前契约指纹记为已接受基线（有意变更后显式跑，与 sync 分开） |
 
 （未来：`harness map` 生成代码地图、`harness new-adr` 起草决策记录。）

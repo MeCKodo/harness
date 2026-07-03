@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import fg from "fast-glob";
+import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { loadManifest, validateManifest } from "../manifest";
 import { renderAgentsMd, renderTargets } from "../render";
@@ -24,6 +25,20 @@ export function doctorCmd(repo: string): number {
       warn(i.msg);
     }
   }
+  // Guard against a "vacuous pass": an enforcement whose path_glob matches no
+  // files silently passes `verify` while checking nothing — worse than no gate.
+  for (const inv of m.invariants ?? []) {
+    if (!inv.enforcement) continue;
+    const globs = inv.enforcement.path_glob?.length ? inv.enforcement.path_glob : ["**/*"];
+    const n = fg.sync(globs, {
+      cwd: repo,
+      onlyFiles: true,
+      dot: false,
+      ignore: ["**/node_modules/**", "**/.git/**", "**/dist/**"],
+    }).length;
+    if (n === 0)
+      warn(`invariant ${inv.id}: enforcement path_glob matches 0 files — passes without checking anything (wrong path_glob for this repo layout?)`);
+  }
 
   info("\n2) Referenced paths");
   const checkPath = (rel: string, label: string) => {
@@ -33,20 +48,28 @@ export function doctorCmd(repo: string): number {
       problems++;
     }
   };
-  // repo-relative path referenced by routing/modules (e.g. src/server.ts)
-  const checkRepoPath = (rel: string, label: string) => {
-    if (existsSync(join(repo, rel))) ok(`${label}: ${rel}`);
-    else {
-      warn(`${label} points at a missing path: ${rel}`);
+  // repo-relative path referenced by routing/modules (e.g. src/server.ts).
+  // wantFile=true for entry/binds: they hash a file for freshness, so pointing
+  // at a directory is a config mistake — warn instead of silently OK-ing it.
+  const checkRepoPath = (rel: string, label: string, wantFile = false) => {
+    const abs = join(repo, rel);
+    if (!existsSync(abs)) {
+      err(`${label} points at a missing path: ${rel}`);
       problems++;
-    }
+    } else if (wantFile && statSync(abs).isDirectory()) {
+      warn(`${label}: ${rel} is a directory — entry/binds should be a file (freshness hashes file content)`);
+    } else ok(`${label}: ${rel}`);
   };
-  for (const k of m.knowledge ?? []) checkPath(k.path, "knowledge");
+  for (const k of m.knowledge ?? []) {
+    checkPath(k.path, "knowledge");
+    for (const b of new Set(k.binds ?? [])) checkRepoPath(b, `knowledge "${k.path}" binds`, true);
+  }
   if (m.playbooks?.dir) checkPath(m.playbooks.dir, "playbooks");
+  // routing read/entry are navigation pointers (NOT freshness-bound) — dirs OK.
   for (const r of m.routing ?? [])
     for (const p of new Set([...(r.read ?? []), ...(r.entry ?? [])])) checkRepoPath(p, `routing "${r.when}"`);
   for (const mod of m.modules ?? [])
-    for (const p of new Set(mod.entry ?? [])) checkRepoPath(p, `module ${mod.name}`);
+    for (const p of new Set(mod.entry ?? [])) checkRepoPath(p, `module ${mod.name}`, true);
 
   info("\n3) Generated files drift");
   for (const [rel, content] of renderTargets(m)) {

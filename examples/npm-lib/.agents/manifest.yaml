@@ -23,7 +23,7 @@ capabilities:
   lint:      { run: "pnpm lint" }
   test:      { run: "pnpm test", desc: "Vitest + 覆盖率" }
   docs:      { run: "pnpm typedoc", desc: "生成 API 文档" }
-  verify:    { run: "harness-kit verify" }
+  verify:    { run: "harness verify" }
   release:   { run: "pnpm changeset publish", desc: "发布到 npm", mutating: true }
   # 注意：无 run —— 库不"运行"
 

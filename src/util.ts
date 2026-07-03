@@ -1,14 +1,21 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 export function sha256(input: string | Buffer): string {
   return createHash("sha256").update(input).digest("hex");
 }
 
+// Returns null for anything that is not a readable regular file (missing OR a
+// directory). Never throws: a directory entry must degrade to "unbound", not
+// crash sync/doctor with EISDIR.
 export function hashFile(absPath: string): string | null {
-  if (!existsSync(absPath)) return null;
-  return sha256(readFileSync(absPath));
+  try {
+    if (!statSync(absPath).isFile()) return null;
+    return sha256(readFileSync(absPath));
+  } catch {
+    return null;
+  }
 }
 
 export function readText(absPath: string): string | null {

@@ -44,3 +44,15 @@ test("a missing bound file is recorded as (missing), not a crash", () => {
   const s = computeBindings(repo, m);
   assert.equal(s.bindings["k"]["nope.ts"], "(missing)");
 });
+
+test("a directory entry does not crash with EISDIR (recorded as (missing))", () => {
+  const repo = mkdtempSync(join(tmpdir(), "harness-state-"));
+  mkdirSync(join(repo, "src"), { recursive: true }); // entry points at a directory
+  const m: Manifest = {
+    spec: "v",
+    identity: { name: "t", summary: "s" },
+    modules: [{ name: "core", role: "r", entry: ["src"] }],
+  };
+  const s = computeBindings(repo, m);
+  assert.equal(s.bindings["module:core"]["src"], "(missing)");
+});
