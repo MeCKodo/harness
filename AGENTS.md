@@ -6,7 +6,7 @@ AI-friendly repo harness CLI —— 把工程知识变成 agent 可消费的 man
 
 ## Working agreement (read first)
 
-`AGENTS.md`, `CLAUDE.md`, `.agents/routing.md`, and `.agents/modules.md` are GENERATED from `.agents/manifest.yaml`. Do NOT edit those files by hand — edit the manifest and run `harness-kit sync`. Knowledge is hand-authored; `.agents/hooks/` is managed by `harness-kit install-hooks`.
+`AGENTS.md`, `CLAUDE.md`, and `.agents/reference.md` are GENERATED from `.agents/manifest.yaml`; `.agents/routing.md` / `.agents/modules.md` are generated when those sections are declared. Do NOT edit those files by hand — edit the manifest and run `harness-kit sync`. Knowledge is hand-authored; `.agents/hooks/` is managed by `harness-kit install-hooks`.
 
 Before you touch code:
 1. Post a **Task Brief** in chat: what you'll change, which change-type it is, which layers/files it touches, and how you'll verify.
@@ -16,12 +16,12 @@ Before you touch code:
 Before you finish:
 3. Run `harness-kit run-checks` to verify THIS change (impact-driven) and `harness-kit verify` for drift/invariants. Treat blocking gaps as unfinished work — close them; only eligible coverage gaps may be waived with a scoped reason.
 4. **Never claim a check you didn't run.** If something is a GAP (packaging, real network, prod upload), say so — don't pretend it passed.
-5. If you learned something an agent could not infer from code (a gotcha, a decision, a fix), capture it under `.agents/knowledge/` (a journal ADR for decisions). Do NOT record one-off noise or anything already obvious from the code.
+5. If you learned something an agent could not infer from code (a gotcha, a decision, a fix), update the registered knowledge source in place, or add new Harness-owned knowledge under `.agents/knowledge/` (a journal ADR for decisions). Never move/copy an existing repo document just to fit a folder name. Do NOT record one-off noise or anything already obvious from the code.
 
 ## Scope
 
 In scope:
-- CLI 命令 init / sync / doctor / verify / accept-contract / install-hooks / onboard / plan-checks / run-checks / evidence / check-loop（src/）
+- CLI 命令 init / prepare-adoption / record-adoption-audit / sync / doctor / verify / accept-contract / install-hooks / onboard / plan-checks / run-checks / evidence / record-context-review / check-loop（src/）
 - manifest schema + 生成器 + 声明式不变量执行 + 派生新鲜度 + 影响面 planner
 
 Out of scope (do NOT modify here):
@@ -38,8 +38,6 @@ Downstream: 任何被 harness 初始化的仓库
 - `typecheck`: `pnpm typecheck` — tsc --noEmit
 - `test`: `pnpm test` — node:test + tsx 核心单测（enforce/state/render/contracts/manifest）
 - `build`: `pnpm build` — esbuild 打包成 dist/harness-kit.cjs 单文件可执行（bin 入口）
-- `harness`: `pnpm exec tsx src/cli.ts` — 跑 CLI（开发态）
-  - example: `pnpm exec tsx src/cli.ts verify --repo .`
 
 ## Contracts (breaking changes need a version bump)
 
@@ -55,7 +53,8 @@ Run `harness-kit verify` to check the enforceable ones.
 
 ## Knowledge & maps (load on demand)
 
-- Domain / conventions / decisions: `.agents/knowledge/`
+- Harness-owned domain / conventions / decisions: `.agents/knowledge/`
+- Full commands, environment, and registered knowledge catalog: `.agents/reference.md`
 - Change-type routing (read before editing): `.agents/routing.md`
 - Module map + common pitfalls: `.agents/modules.md`
 - Implement -> verify loop (deep guide): run `harness-kit check-loop`

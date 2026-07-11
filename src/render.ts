@@ -14,6 +14,7 @@ export function renderTargets(m: Manifest): Array<[string, string]> {
   const targets: Array<[string, string]> = [
     ["AGENTS.md", renderAgentsMd(m)],
     ["CLAUDE.md", renderClaudeMd()],
+    [".agents/reference.md", renderReferenceMd(m)],
   ];
   if (m.routing?.length) targets.push([".agents/routing.md", renderRoutingMd(m)]);
   if (m.modules?.length) targets.push([".agents/modules.md", renderModulesMd(m)]);
@@ -29,7 +30,8 @@ export function renderAgentsMd(m: Manifest): string {
 
   L.push("## Working agreement (read first)", "");
   L.push(
-    "`AGENTS.md`, `CLAUDE.md`, `.agents/routing.md`, and `.agents/modules.md` are GENERATED from `.agents/manifest.yaml`. " +
+    "`AGENTS.md`, `CLAUDE.md`, and `.agents/reference.md` are GENERATED from `.agents/manifest.yaml`; " +
+      "`.agents/routing.md` / `.agents/modules.md` are generated when those sections are declared. " +
       "Do NOT edit those files by hand — edit the manifest and run `harness-kit sync`. " +
       "Knowledge is hand-authored; `.agents/hooks/` is managed by `harness-kit install-hooks`.",
     "",
@@ -56,8 +58,9 @@ export function renderAgentsMd(m: Manifest): string {
     "4. **Never claim a check you didn't run.** If something is a GAP (packaging, real network, prod upload), say so — don't pretend it passed.",
   );
   L.push(
-    "5. If you learned something an agent could not infer from code (a gotcha, a decision, a fix), capture it under `.agents/knowledge/` " +
-      "(a journal ADR for decisions). Do NOT record one-off noise or anything already obvious from the code.",
+    "5. If you learned something an agent could not infer from code (a gotcha, a decision, a fix), update the registered knowledge source in place, " +
+      "or add new Harness-owned knowledge under `.agents/knowledge/` (a journal ADR for decisions). Never move/copy an existing repo document just to fit a folder name. " +
+      "Do NOT record one-off noise or anything already obvious from the code.",
   );
   L.push("");
 
@@ -76,7 +79,12 @@ export function renderAgentsMd(m: Manifest): string {
     L.push("");
   }
 
-  const caps = Object.entries(m.capabilities ?? {});
+  const allCaps = Object.entries(m.capabilities ?? {});
+  const hasExplicitBootstrap = allCaps.some(([, capability]) => capability.bootstrap !== undefined);
+  const defaultBootstrap = new Set(["setup", "test", "typecheck", "lint", "build", "verify", "dev"]);
+  const caps = allCaps.filter(([verb, capability]) =>
+    hasExplicitBootstrap ? capability.bootstrap === true : defaultBootstrap.has(verb),
+  );
   if (caps.length) {
     L.push("## Commands", "");
     for (const [verb, c] of caps) {
@@ -85,17 +93,6 @@ export function renderAgentsMd(m: Manifest): string {
         .join(" ");
       L.push(`- \`${verb}\`: \`${c.run}\`${c.desc ? ` — ${c.desc}` : ""}${tags ? " " + tags : ""}`);
       if (c.example) L.push(`  - example: \`${c.example}\``);
-    }
-    L.push("");
-  }
-
-  if (m.environment?.length) {
-    L.push("## Environment", "");
-    for (const e of m.environment) {
-      const flags = [e.required ? "(required)" : "", e.secret ? "(secret — never hardcode/commit)" : ""]
-        .filter(Boolean)
-        .join(" ");
-      L.push(`- \`${e.name}\`${flags ? " " + flags : ""}${e.desc ? ` — ${e.desc}` : ""}`);
     }
     L.push("");
   }
@@ -118,13 +115,61 @@ export function renderAgentsMd(m: Manifest): string {
   }
 
   L.push("## Knowledge & maps (load on demand)", "");
-  L.push("- Domain / conventions / decisions: `.agents/knowledge/`");
+  if (!(m.knowledge?.length) || m.knowledge.some((knowledge) => (knowledge.root ?? "agents") === "agents"))
+    L.push("- Harness-owned domain / conventions / decisions: `.agents/knowledge/`");
+  if (m.knowledge?.some((knowledge) => knowledge.root === "repo"))
+    L.push("- Existing repository documents stay in place; use their exact paths from `.agents/reference.md`");
+  if (allCaps.length || m.environment?.length || m.knowledge?.length)
+    L.push("- Full commands, environment, and registered knowledge catalog: `.agents/reference.md`");
   if (m.routing?.length) L.push("- Change-type routing (read before editing): `.agents/routing.md`");
   if (m.modules?.length) L.push("- Module map + common pitfalls: `.agents/modules.md`");
   if (hasImpactMap) L.push("- Implement -> verify loop (deep guide): run `harness-kit check-loop`");
   L.push("- Tooling adoption log (earn heavier tooling): `.agents/adoption.md`");
   if (m.playbooks?.dir) L.push(`- Task playbooks: \`.agents/${m.playbooks.dir}\``);
   L.push("");
+  return L.join("\n");
+}
+
+/** Full catalog kept out of the bootstrap budget. */
+export function renderReferenceMd(m: Manifest): string {
+  const L: string[] = [GEN_HEADER(), "", "# Harness reference", ""];
+  const caps = Object.entries(m.capabilities ?? {});
+  if (caps.length) {
+    L.push("## Commands", "");
+    for (const [verb, capability] of caps) {
+      const tags = [
+        capability.bootstrap ? "(bootstrap)" : "",
+        capability.background ? "(long-running)" : "",
+        capability.mutating ? "(mutating — confirm first)" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      L.push(`- \`${verb}\`: \`${capability.run}\`${capability.desc ? ` — ${capability.desc}` : ""}${tags ? ` ${tags}` : ""}`);
+      if (capability.example) L.push(`  - example: \`${capability.example}\``);
+    }
+    L.push("");
+  }
+  if (m.environment?.length) {
+    L.push("## Environment", "");
+    for (const variable of m.environment) {
+      const flags = [variable.required ? "(required)" : "", variable.secret ? "(secret — never hardcode/commit)" : ""]
+        .filter(Boolean)
+        .join(" ");
+      L.push(`- \`${variable.name}\`${flags ? ` ${flags}` : ""}${variable.desc ? ` — ${variable.desc}` : ""}`);
+    }
+    L.push("");
+  }
+  if (m.knowledge?.length) {
+    L.push("## Registered knowledge", "");
+    for (const knowledge of m.knowledge) {
+      const path = knowledge.root === "repo" ? knowledge.path : `.agents/${knowledge.path}`;
+      const tags = [knowledge.role ? `role=${knowledge.role}` : "", knowledge.authority ? `authority=${knowledge.authority}` : ""]
+        .filter(Boolean)
+        .join(", ");
+      L.push(`- \`${path}\`${tags ? ` (${tags})` : ""}`);
+    }
+    L.push("");
+  }
   return L.join("\n");
 }
 

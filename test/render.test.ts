@@ -21,6 +21,7 @@ test("renderTargets omits routing/modules when absent and adds them when present
   const bare = renderTargets(base).map((t) => t[0]);
   assert.ok(bare.includes("AGENTS.md"));
   assert.ok(bare.includes("CLAUDE.md"));
+  assert.ok(bare.includes(".agents/reference.md"));
   assert.ok(!bare.some((p) => p.includes(".cursor")));
   assert.ok(!bare.includes(".agents/routing.md"));
   assert.ok(!bare.includes(".agents/modules.md"));
@@ -32,6 +33,43 @@ test("renderTargets omits routing/modules when absent and adds them when present
   }).map((t) => t[0]);
   assert.ok(rich.includes(".agents/routing.md"));
   assert.ok(rich.includes(".agents/modules.md"));
+});
+
+test("even an empty catalog gets the reference target promised by AGENTS.md", () => {
+  const minimal: Manifest = { spec: "ai-harness/v0", identity: { name: "minimal" } };
+  const targets = renderTargets(minimal);
+  const agents = targets.find(([path]) => path === "AGENTS.md")?.[1] ?? "";
+  const reference = targets.find(([path]) => path === ".agents/reference.md")?.[1] ?? "";
+
+  assert.match(agents, /`\.agents\/reference\.md`/);
+  assert.match(reference, /^# Harness reference$/m);
+});
+
+test("AGENTS keeps bootstrap commands short while reference.md preserves the full catalog", () => {
+  const manifest: Manifest = {
+    ...base,
+    capabilities: {
+      test: { run: "pnpm test", bootstrap: true },
+      releaseInternalCandidate: { run: "pnpm release:internal:candidate", desc: "long release description" },
+    },
+    environment: [{ name: "DATABASE_URL", desc: "database connection", required: true, secret: true }],
+    knowledge: [
+      { root: "repo", path: "engineering/handbook/api.md", role: "api", authority: "derived" },
+      { root: "agents", path: "knowledge/policy.md", role: "policy", authority: "policy" },
+    ],
+  };
+  const agents = renderAgentsMd(manifest);
+  assert.match(agents, /pnpm test/);
+  assert.doesNotMatch(agents, /release:internal:candidate/);
+  assert.doesNotMatch(agents, /DATABASE_URL/);
+  assert.match(agents, /\.agents\/reference\.md/);
+  assert.match(agents, /Existing repository documents stay in place/);
+
+  const reference = renderTargets(manifest).find((target) => target[0] === ".agents/reference.md")![1];
+  assert.match(reference, /release:internal:candidate/);
+  assert.match(reference, /DATABASE_URL/);
+  assert.match(reference, /engineering\/handbook\/api\.md/);
+  assert.match(reference, /\.agents\/knowledge\/policy\.md/);
 });
 
 test("routing step in AGENTS.md adapts to whether routing exists", () => {

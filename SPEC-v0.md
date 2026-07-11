@@ -1,12 +1,14 @@
-# AI-Harness SPEC v0.2
+# AI-Harness SPEC v0.3
 
 > 一套 AI-friendly 的仓库规范。定义"任何仓库要让 Agent 冷启动即可高效工作、且人人构建出一致范式，必须声明什么、怎么声明、怎么防过期"。
 > 配套 CLI：`ai-harness`（`init` / `sync` / `doctor` / `verify`）。manifest 标签仍为 `ai-harness/v0`（v0 主线）。
 >
 > 设计背景与调研见 `DESIGN.md`。本文件是规范正文。
 >
-> **v0.2 相比 v0**：在"可执行内核"（生成 + 门禁 + 派生防腐烂）之上，叠加一层从竞品吸收来的**行为协议**——
-> Task Brief、按改动类型路由（§8）、模块卡（§9）、验证缺口 GAPS（§5）、知识沉淀触发与 adoption 节奏。
+> **v0.3 相比 v0.2**：补齐真实仓库验证暴露出的安全与可信度边界——严格 spec、事务生成、首次接管快照、原位置知识登记、显式 Agent 复核、结构化 verify、Hook 活性状态和 worktree-safe Git hooks。
+> manifest 标签仍是唯一受支持的 `ai-harness/v0`；任何未知标签（例如 `ai-harness/v999`）必须 fail closed，不能按“未来版本大概兼容”继续执行。
+>
+> v0.2 引入的 Task Brief、按改动类型路由（§8）、模块卡（§9）、验证缺口 GAPS（§5）、知识沉淀触发与 adoption 节奏继续保留。
 > 切分原则：**能机器校验的做成数据驱动**（routing/modules/GAPS 都由 manifest 生成并被 `doctor`/`verify` 检查），
 > **纯 agent 运行时行为的留 prose**（写进生成的 `AGENTS.md` Working agreement）。
 
@@ -31,12 +33,15 @@
   CLAUDE.md                          # [生成] 首行 @AGENTS.md
   .agents/                           # canonical 命名空间（唯一手写源）
     manifest.yaml                    # 脊椎（本规范核心，见 §3）
-    knowledge/                       # 手写叙述：domain / conventions / journal
+    knowledge/                       # Harness 自己新增的叙述；已有业务文档可留在任意 repo 路径
       domain.md
       conventions.md
       journal/0001-*.md              # ADR：一决策一文件
     routing.md                       # [生成] 按改动类型导航（见 §8）
     modules.md                       # [生成] 模块卡（见 §9）
+    reference.md                     # [生成] 完整命令、环境、登记知识路径
+    adoption/legacy/                 # 首次接管前入口文件的逐字节快照
+    adoption/legacy-index.json       # 快照 hash / symlink target / 来源索引
     adoption.md                      # 手写：挣工具节奏账本（见 §5）
     contracts/<id>.snapshot          # 已接受的契约基线，随仓入库（见 §5）
     playbooks/                       # SKILL.md（可选，复用社区标准）
@@ -72,6 +77,7 @@ capabilities:
     example?: string                 # 特别用于 CLI：一个真实调用示例
     background?: bool                # dev server 等长驻进程 = true
     mutating?: bool                  # release/publish/deploy 等有副作用 → Agent 须先确认
+    bootstrap?: bool                 # 显式决定是否留在短 AGENTS.md；完整目录始终进 reference.md
 
 # ── 3. Environment：跑起来需要的配置（每个可运行仓库都要） ────
 environment:
@@ -83,7 +89,7 @@ environment:
 # ── 4. Contracts：对外接口 = 契约（破坏需显式版本升级） ──────
 #   涵盖：库的 public API、CLI 的命令/flag、前后端 API schema…
 contracts:
-  - id: string
+  - id: string                         # 1-128 位安全 ASCII 文件名字符；字母/数字开头，不含路径分隔符
     kind: public-api | cli-interface | http-api | event | other
     desc: string
     breaking_needs?: major | minor   # 破坏它至少需要哪级版本变更
@@ -101,16 +107,20 @@ invariants:
       forbid_import?:  [string]
       require_pattern?:[string]
       path_glob?:      [string]      # 限定作用范围
+      allow_empty?: bool             # true = “匹配 0 文件”是刻意的缺席约束，不报警
     check?: string                    # (b) 任意命令，exit 0 = pass
     manual?: bool                     # (c) 无法机器验证 → 软约定，计入技术债
     llm_judge?: bool                  # 复杂语义可 opt-in 让模型判
 
 # ── 6. Knowledge：指向叙述文件；新鲜度"派生"，不手写日期 ─────
 knowledge:
-  - path: string                     # .agents/knowledge/... 下的文件/目录
+  - path: string                     # 在 root 内解析的相对文件/目录；不能绝对路径或越界
+    root?: agents | repo             # 默认 agents；repo 可登记任意现有业务路径，不搬家/复制
     role: domain | conventions | journal | other
+    authority?: derived | policy | review
+                                      # derived: 文档跟随代码；policy: 文档约束代码；review: 双向语义核对
     binds?: [string]                 # 它描述的源文件（用于算 drift）
-    #  freshness 由 CLI 从 git 与 binds 的 hash 派生，不要求人肉填 verified 日期
+    #  authority 一旦声明，必须由 Agent 分析后 record-context-review；sync 不能代替复核
 
 # ── 8. Routing：按"改动类型"导航（生成 .agents/routing.md，v0.2） ──
 #   不列举需求，而是按"改动类型"告诉 Agent：先读哪、入口在哪、别假设什么、最少跑什么验证。
@@ -161,19 +171,25 @@ playbooks:
 
 # ── 生成映射：canonical → 各工具文件 ─────────────────────────
 generate:
-  - to: "AGENTS.md"                       render: "identity+capabilities+environment+invariants"
+  - to: "AGENTS.md"                       render: "短 bootstrap：identity+精选 capabilities+invariants+索引"
   - to: "CLAUDE.md"                       content: "@AGENTS.md"
+  - to: ".agents/reference.md"            render: "完整 capabilities+environment+knowledge catalog"
 ```
 
 **保留动词说明**：`capabilities` 的保留动词全部**可选**——它是一套"共享词汇表"，仓库只声明适用的子集（库通常没有 `run`；前端 `run` 是 dev server 且 `background: true`）。Agent 冷启动时能预期这些词的语义。
+
+**路径与 glob 说明**：`enforcement.path_glob`、`modules.owns/tests`、`validation.required_coverage` 全部是 include-only 正向 glob；以 `!` 开头的否定 glob 必须报 schema error，不能把底层 matcher 的不同语义当兼容。执行型 glob 最长 4096 字符，并在 manifest 校验期由 matcher 预编译，不能把异常拖到 `verify`。`routing.read/entry` 可以是文件、目录或正向 glob，`doctor` 会展开并在 0 匹配时失败。所有 repo 文件指针必须留在其声明根目录内。
 
 ---
 
 ## 4. 生成契约（`sync`）
 
-- `manifest.yaml` + `.agents/**` 是唯一手写源。
-- `harness sync` 幂等地渲染出 `generate` 列出的所有工具文件，顶部写 DO-NOT-EDIT 头。
-- 生成文件不进人工编辑；要改就改 manifest 再 sync。
+- `manifest.yaml` 是生成结构的真相源；`.agents/knowledge/` 及 `root: repo` 登记的业务文档仍是手写语义源。
+- `harness sync` 幂等渲染工具文件，先对**全部目标**做安全 preflight，再写同目录临时文件。缺失目标用 hard-link no-replace 安装；已有普通文件先移到唯一 rollback 位并再次核对 identity/bytes，再 no-replace 安装候选。中途失败尽力恢复；若同时有别的进程写入，优先保留较新的路径和原文件 backup、明确失败，绝不静默覆盖。跨平台 Node 没有“比较 inode 后原子替换”的 CAS，因此普通文件替换存在极短路径空窗；这里承诺的是数据保全的 best-effort 文件事务，不冒充数据库级原子性。已完全一致的普通文件不得无谓重写。
+- 最终路径及其父目录不能跟随 symlink。唯一允许保留的语义 alias 是仓库根的相对 `CLAUDE.md -> AGENTS.md`，且解析后必须精确落在同仓 `AGENTS.md`；其它 symlink、目录、越界父目录全部 fail closed。
+- `init` 先统一预检 manifest、domain、conventions、journal/playbooks `.gitkeep` 和 adoption log；非 `--force` 时任一 scaffold 目标已存在就必须零写入拒绝。首次接管已有普通入口文件前，`init` 仅对 Harness 将接管的 managed entry 保存逐字节 legacy snapshot、mode/hash（symlink 保存 link target）。snapshot/index 的父链必须是仓内真实目录，读取使用 no-follow，snapshot 用排他 no-replace 写，index 用绑定旧字节的事务写；索引提交失败时初始化整体失败，已安全落下的 append-only snapshot 原位保留并在错误中给出恢复路径，绝不冒险删除可能被并发改写的 inode。嵌套 `AGENTS.md` / `CLAUDE.md` 及它们递归显式引用的仓内文本文档始终留在原地，不写入仓内 `.agents/adoption/legacy`；`prepare-adoption` 才把这些 guidance 复制到仓外私有 bundle，不按业务目录名猜测（Git 不可用时仍完整扫描，VCS 元数据与 Harness 自身 adoption evidence 除外）。guidance path/type/bytes/hash/mode/link target 纳入 candidate 绑定并在 apply 时重新发现、逐项重验；缺失、二进制、越界或指向仓外的 symlink 引用 fail closed，普通代码/资产链接与 Markdown 图片不当作 guidance。普通 `sync` 必须拒绝覆盖；`prepare-adoption` 不写真实入口。盲审报告经 `record-adoption-audit` 形成 `assurance=declared / independence=unverified` 的 pass/fail receipt；它证明被声明审查的是哪些字节，不证明审计身份或语义质量。只有带精确 candidate+pass receipt 的 `sync --adopt-existing` 才会在同次写入 preflight 里重新核对 live legacy、snapshot/index、guidance、manifest、所有候选字节及报告 hash。任一漂移都拒绝，`--force` 不能绕过。
+- `sync` **只生成确定性文件**，绝不写新鲜度 baseline 或自动“接受”知识。语义复核只能由 Agent 完成分析后显式调用 `record-context-review`。
+- 生成文件不进人工编辑；要改结构就改 manifest 再 sync。已有业务文档不搬入 `.agents/`，仍在原路径维护。
 
 ## 5. 校验契约（`doctor` / `verify`）
 
@@ -184,14 +200,15 @@ generate:
 4. 生成物**无漂移**（re-render 到内存 vs 磁盘 diff）。
 5. 新鲜度：`knowledge.binds` 的源文件 hash 变了 → 报 drift；`invariants` 里 `manual:true` 的计入"待补门禁"技术债并给出数量。
 6. **AGENTS.md 体量预算**：生成的 `AGENTS.md` 超过 ~150 行 / ~700 词告警。渐进式披露——入口只指路，细节放 `.agents/` 按需加载，绝不让 Agent 读不完。
+7. **Agent Hook 状态**：`CONFIGURED` = runner + 至少一组项目 SessionStart/Stop 配置完整但尚无当前 Stop 证据；`ACTIVE` = 非手动 session 的当前 `run-checks + verify` evidence 有效，且 SessionStart 绑定的 runner/client-config 指纹仍与现场完全相同；`DEGRADED` = runner/config 缺失或改变（包括合法的本地 CLI override 改值），或 evidence 失败/stale。`evidence.hookActive` 使用同一配置绑定，不能让旧证据替另一版配置背书。状态是可见告警，不冒充 repo 代码门禁。
 
-`harness-kit verify`（CI 门禁，全确定性）= 所有 `invariants` 的 `enforcement`/`check` + `contracts` 的 `check`/`snapshot` + "生成物无漂移"。任一失败即 fail。
+`harness-kit verify`（本地/CI 均可用的确定性门禁）= 所有 `invariants` 的 `enforcement`/`check` + `contracts` 的 `check`/`snapshot` + "生成物无漂移" + 显式 authority 的 context freshness。任一 blocking 项失败即 fail。`--json` 必须只向 stdout 输出一个 `ai-harness/verify-report/v1` 文档，包含 `ok/failures/manifestErrors/context/hooks/gaps/messages`；即使 matcher、contract baseline 或 hook 配置遇到异常，也只能返回这一个结构化失败文档。
 
 > **`verify` 不执行任何 `capabilities`**。`capabilities.verify` 只是给人 / agent 看的"如何验证本仓"指针；若真去执行会与自身无限递归。声明为 `mutating` / `background` 的 capability 一律进 GAPS（诚实标注"未在门禁里跑"），不实跑。所以放心声明 `setup: rush install`、`build: go build` 等——`verify` 不会在无网 / 无依赖环境里去跑它们。
 
 **契约校验（v0.2，协议无关）**：契约的破坏检测有两条互补路径，CLI **不理解任何协议语义**，只当调度器 + 基线框架：
 - `check`：仓库自带的破坏检测工具（HTTP → `oasdiff`；gRPC/protobuf → `buf breaking`；库 → `api-extractor`；CLI → 自写脚本），exit 0 = 兼容。CLI 只 `execSync` 看退出码。
-- `snapshot`：仓库给一条**打印契约当前指纹到 stdout** 的命令（HTTP 打印 openapi / 抓路由；库打印 API 报告；CLI 打印 `--help`）。CLI 把 stdout 存成基线 `.agents/contracts/<id>.snapshot`，`verify` 时重新打印再 diff：一致=过，**漂移=fail**，无基线=提示先 `accept-contract`。这套 snapshot+baseline 与"生成物漂移检测"同一心智，复用于任何形态。
+- `snapshot`：仓库给一条**打印契约当前指纹到 stdout** 的命令（HTTP 打印 openapi / 抓路由；库打印 API 报告；CLI 打印 `--help`）。CLI 把 stdout 存成基线 `.agents/contracts/<id>.snapshot`，`verify` 时重新打印再 diff：一致=过，**漂移=fail**，无基线=提示先 `accept-contract`。`id` 必须先通过跨平台安全文件名校验，拒绝 Windows device stem，并在 ASCII case-fold 后保持唯一，避免 macOS/Windows 大小写不敏感文件系统让两个契约共用同一 baseline。最终 baseline 只能是 `.agents/contracts/` 的直接普通文件，目录与 symlink 均 fail closed。
 - 有意变更契约时，显式跑 `harness accept-contract [--id <id>]` 更新基线——**与 `sync` 分开**，杜绝破坏被悄悄盖章。
 
 **GAPS 报告（v0.2）**：`verify` 末尾输出一段"这里查不了"的显式清单，把以下三类**从散落的 WARN 收拢成一等公民**：
@@ -205,12 +222,16 @@ GAPS 不计入失败，但会打印数量（`verify: OK (N gap(s))`）。配套*
 - **Task Brief**：动手前先在对话里声明"改什么/属哪类/碰哪些层/怎么验证"，治"上来就全仓 grep + 瞎猜"。
 - **先路由后编辑**：改代码前先在 `routing.md` 里找到对应改动类型、按它指的文件读，别全仓搜。
 - **知识沉淀触发 + 反沉淀**：学到"代码里推不出来的"（坑/决策/修复）才沉淀到 `knowledge/`（决策走 journal ADR）；一次性噪音、代码里显而易见的，**不要沉淀**。
+- **无损接入**：onboarding 要盘点所有既有 AGENTS/CLAUDE 及其明确引用的 repo 文档，不根据目录名猜“哪些算知识”。先留逐字节 snapshot 和逐规则 preservation ledger，用 `prepare-adoption` 在仓外生成内容寻址候选，再让独立 Agent 只看旧/新证据盲审；清晰缺口自动修复并重新生成/复审，只有相互冲突或无法从代码/测试/本地配置判定的语义才升级给人。真实入口只有在 pass receipt 同时绑定 live legacy、候选、manifest 和报告 hash 时才可接管。
 - **adoption 节奏**（`.agents/adoption.md`，手写账本）：默认用最轻的方案；同一错误漏 3 次以上、或一个软约定用满一周确实值得，才把它升级成 `verify` 的机器门禁。反仪式，"挣来"更重的工具。
 
 ## 6. 防腐烂（anti-rot）
 
 - **结构地图（暂缓 / 可选）**：核心"该看哪、别假设什么"已由 `modules`（模块卡，§9）+ `routing`（§8）用**高信噪比精选**覆盖。全量代码 dump（repomix `--compress`）不是必做项——它面向"喂给无文件访问的外部 LLM"，与 IDE agent 场景 + 渐进式披露原则不对口，且腐烂最快。真需要时**按需生成、不入库**（放 .gitignore），不当 CI/hook 固定产物。见 DESIGN 决策日志（2026-07-03）。
-- **新鲜度派生、不手写**：知识条目通过 `binds` 绑定源文件，CLI 存其内容 hash；源文件变化 → reliability 下降 → drift 告警。**不要求人肉维护 `verified` 日期**（那是 ceremony）。
+- **路径不设命名白名单**：`root: agents` 从 `.agents/` 解析；`root: repo` 从仓库根解析。`docs/`、`knowledge/`、`context/` 只是可能的项目命名，不是 Harness 规则；任意现有相对路径都可登记且保持原位。
+- **新鲜度由 Agent 复核推进，不由 sync 偷偷推进**：`record-context-review --path <exact path> --reason <分析依据>` 或 `--module <name>` 同时保存 context 内容 hash、绑定源 hash、理由、可选 session。之后文档或源任一变化即 stale。hash 证明“复核后没变”，不证明语义正确；命令必须在 Agent 已读代码/测试/本地配置并作出判断之后执行。
+- **authority 是语义方向**：`derived` 要求文档跟代码事实同步；`policy` 要求实现遵守文档；`review` 要求双向核对。三种显式 authority 在首次 record 前都 blocking。未声明 authority 的 v0.2 legacy baseline 只保留 advisory 兼容路径，完成一次显式 review 后同样变成 durable blocking evidence。
+- **review 绑定完整语义输入**：删掉或替换 `binds`、修改 `authority`、知识内容变化、绑定源变化或绑定源缺失，都会让旧 review blocking stale；缺失源不能创建新的 review。这样不能靠缩小绑定范围或沿用旧 hash 把未知状态伪装成 current。
 - **两档 guardian**：
   - 便宜档（`doctor`，可每日/每次会话跑，确定性）：drift、过期候选、`manual` 技术债。
   - LLM 档（可选、偶发、须先确认花费）：找缺失的知识/ADR、语义审计。
@@ -220,14 +241,17 @@ GAPS 不计入失败，但会打印数量（`verify: OK (N gap(s))`）。配套*
 | 命令 | 作用 |
 | --- | --- |
 | `harness init` | 往当前 repo 注入 `.agents/` 骨架 + 交互式填 manifest 关键字段 |
-| `harness sync` | manifest → 生成各工具文件（幂等，带 DO-NOT-EDIT 头） |
+| `harness prepare-adoption --out <external-dir>` | 在仓库外生成私有 legacy+candidate 审计 bundle，不修改真实入口 |
+| `harness record-adoption-audit --candidate <dir> --verdict pass\|fail --report <file> --reason <text> [--out]` | 生成内容绑定的声明式审计回执；不证明身份或语义质量 |
+| `harness sync [--adopt-existing --candidate <dir> --audit <receipt>]` | 事务生成工具文件；首次接管要求精确 pass receipt 且应用瞬间重新渲染核对；不刷新 context review |
 | `harness doctor` | 开发期体检：完整性 + 漂移 + 新鲜度 + 技术债 + 影响面 owns 空匹配 / playbook 存在性 |
-| `harness verify` | CI 门禁：跑全部可执行 checks，任一失败即 fail |
+| `harness verify [--json]` | 本地/CI 门禁：跑全部可执行 checks，任一失败即 fail；JSON 为单文档稳定协议 |
 | `harness accept-contract [--id]` | 把当前契约指纹记为已接受基线（有意变更后显式跑，与 sync 分开） |
-| `harness install-hooks [--git] [--stop] [--agents ...]` | 装 git 钩子，和/或 Claude Code / Cursor / Codex 的 SessionStart + Stop 门禁 |
+| `harness install-hooks [--git] [--stop] [--agents ...] [--allow-shared-git-hooks]` | 装项目 Agent hooks；原生 Git hooks 默认只在单 worktree/default path/无第三方冲突时写入 |
 | `harness plan-checks [--base] [--profile]` | 算影响面：把 diff 映射到模块、选出该跑的 checks、列出 gap；只算不跑（见 §10） |
 | `harness run-checks [--base] [--profile] [--waive <kind> --where <scope> --reason ...]` | 跑选中的 checks，持久化证据；失败或未解决的 blocking gap → 非零退出 |
 | `harness evidence [--session] [--json]` | 查看当前 worktree 最近一次（或指定 session）的验收证据 |
+| `harness record-context-review (--path <path> | --module <name>) --reason <text> [--session] [--json]` | 记录 Agent 已完成的语义复核，不执行或替代分析 |
 | `harness check-loop` | 打印 harness-check-loop skill：给 agent 的"实现 -> 验证"闭环 |
 | `harness onboard` | 打印 erzhe-harness-init skill：引导 agent 给仓库接入 harness-kit |
 
@@ -259,7 +283,11 @@ GAPS 不计入失败，但会打印数量（`verify: OK (N gap(s))`）。配套*
 
 **执行保证（SessionStart + Stop）**：`install-hooks --stop` 同时安装两个时刻。SessionStart 记录 exact HEAD；每一次 Stop（包括 `stop_hook_active`）都重跑 `run-checks` + `verify`。Claude Code / Codex 输出 JSON `{"decision":"block","reason":"..."}`；Cursor 输出 JSON `followup_message`。Cursor 的 aborted/error 停止不阻断。共享 runner 固定到安装时的 harness-kit 版本（本地开发可用 `HARNESS_KIT_CMD` 覆盖），避免 `latest` 在同一任务中漂移。
 
+项目级 Agent runner 与客户端配置必须整组预检和事务写入：最终路径和父路径都不得是 symlink 或解析到项目外，未知/损坏的 hooks JSON 结构不得被猜测替换，第三方 runner 即使带 `--force` 也不得覆盖。渲染配置所读取的旧字节必须在同一次写事务的 authorize preflight 中重新匹配；中间发生并发编辑就整组失败并保留较新的内容。合法第三方数组项原位保留，只更新与安装器生成的 runner、agent、event、fallback 完整匹配的 Harness 命令；仅出现 marker 文本、错误事件或含 shell expansion 的 `HARNESS_KIT_CMD` 前缀都不能被当成已安装。合法本地 override 也会改变配置指纹：必须由这版精确配置重新产生 SessionStart/Stop 证据，旧证据只能降级。任一客户端预检失败时，所选整组不写入。
+
 安装成功不等于客户端一定执行：首个真实会话后必须跑 `evidence`。当前 Codex CLI 对 linked worktree 的项目级 hooks 存在已知兼容缺口，installer 会告警；Cursor 的部分 headless/cloud surface 也可能不触发生命周期 hooks。没有 evidence 就只能报告 GAP，不能声称门禁已生效。
+
+**原生 Git hooks 是可选增强，不是 Agent 闭环的前提**：安装前必须用参数化 `git` 调用检查 `git worktree list`、`--git-common-dir`、`--git-dir`、解析后的 hooks 目录，以及 `core.hooksPath` 的 scope/origin。多 worktree 默认拒绝；只有用户显式 `--allow-shared-git-hooks` 才可接受共享范围。custom/global/ambiguous `core.hooksPath` 永远拒绝自动写；已有第三方 `pre-commit`/`pre-push` 永远保留，`--force` 也只能刷新 Harness 自己有 marker 的 hook。组合安装时，Git hook 拒绝不能阻止 worktree-local Agent hooks 安装，但整体退出码必须诚实非零。CLI 不自动 merge 第三方 hook、不修改 CI。
 
 `evidence` 每次读取都会从原 resolved base 重算当前指纹；代码变化后旧记录立即变 `stale` 并非零退出。手动 `run-checks` 后只有 `runChecksValid`，独立 `verify` 会在指纹仍匹配时把结果写回；整体 `valid` 必须两道门都通过。证据状态保留 7 天，超过期限不再作为有效 hook 证据；JSON 的 `hookActive` 只表示这条期限内的证据来自生命周期 hook 且 `run-checks + verify` 都通过，不表示持续探测客户端安装状态。若 SessionStart 时工作区已经 dirty，安全边界是“从该 HEAD 到最终工作树的全部改动”（包含既有 dirty 的 superset），不是精确的任务归因；`evidence` 会展示 `initialDirty`。自动 checks 共享 7 分钟总预算，`verify` 的 repo 命令再共享 2 分钟预算，给 10 分钟客户端 hook 留出协议回传时间；超预算必须失败并主动返回 blocking 协议。
 

@@ -14,6 +14,9 @@ import { installHooksCmd } from "./commands/install-hooks";
 import { onboardCmd } from "./commands/onboard";
 import { planChecksCmd } from "./commands/plan-checks";
 import { runChecksCmd } from "./commands/run-checks";
+import { recordContextReviewCmd } from "./commands/record-context-review";
+import { prepareAdoptionCmd } from "./commands/prepare-adoption";
+import { recordAdoptionAuditCmd } from "./commands/record-adoption-audit";
 import { ALL_AGENTS, type AgentTool } from "./commands/stop-hooks";
 
 function guard(fn: () => void | number): void {
@@ -53,7 +56,49 @@ program
   .command("sync")
   .description("generate tool files (AGENTS.md, CLAUDE.md) from manifest")
   .option("-C, --repo <dir>", "target repo dir (default: current directory)")
-  .action((o) => guard(() => syncCmd(repoOf(o))));
+  .option("--adopt-existing", "apply only a content-bound, pass-attested legacy adoption", false)
+  .option("--candidate <dir>", "prepared adoption bundle outside the repository")
+  .option("--audit <receipt>", "pass audit receipt bound to the candidate bundle")
+  .action((o) =>
+    guard(() =>
+      syncCmd(repoOf(o), {
+        adoptExisting: o.adoptExisting,
+        adoptionCandidate: o.candidate,
+        adoptionAudit: o.audit,
+      }),
+    ),
+  );
+
+program
+  .command("prepare-adoption")
+  .description("render a private, repository-external candidate bundle for blind legacy review")
+  .option("-C, --repo <dir>", "target repo dir (default: current directory)")
+  .requiredOption("--out <dir>", "new or empty output directory outside the repository")
+  .option("--json", "machine-readable output", false)
+  .action((o) => guard(() => prepareAdoptionCmd(repoOf(o), { output: o.out, json: o.json })));
+
+program
+  .command("record-adoption-audit")
+  .description("record a declared pass/fail review receipt bound to one adoption candidate and report")
+  .option("-C, --repo <dir>", "target repo dir (default: current directory)")
+  .requiredOption("--candidate <dir>", "prepared adoption bundle outside the repository")
+  .requiredOption("--verdict <pass|fail>", "declared audit verdict")
+  .requiredOption("--report <file>", "independent audit report to hash and bind")
+  .requiredOption("--reason <text>", "non-empty reviewer rationale")
+  .option("--out <receipt>", "receipt path outside the repository (default: candidate bundle)")
+  .option("--json", "machine-readable output", false)
+  .action((o) =>
+    guard(() =>
+      recordAdoptionAuditCmd(repoOf(o), {
+        candidate: o.candidate,
+        verdict: o.verdict,
+        report: o.report,
+        reason: o.reason,
+        receipt: o.out,
+        json: o.json,
+      }),
+    ),
+  );
 
 program
   .command("doctor")
@@ -65,7 +110,8 @@ program
   .command("verify")
   .description("CI gate: run enforceable invariants + contracts + drift; nonzero on failure")
   .option("-C, --repo <dir>", "target repo dir (default: current directory)")
-  .action((o) => guard(() => verifyCmd(repoOf(o))));
+  .option("--json", "machine-readable output", false)
+  .action((o) => guard(() => verifyCmd(repoOf(o), { json: o.json })));
 
 program
   .command("plan-checks")
@@ -110,6 +156,27 @@ program
   .action((o) => guard(() => evidenceCmd(repoOf(o), { session: o.session, json: o.json })));
 
 program
+  .command("record-context-review")
+  .description("record an Agent's completed review of one knowledge item or module against its bound sources")
+  .option("-C, --repo <dir>", "target repo dir (default: current directory)")
+  .option("--path <knowledge-path>", "exact knowledge.path from the manifest")
+  .option("--module <name>", "exact module name (mutually exclusive with --path)")
+  .requiredOption("--reason <text>", "what was reviewed and why the context remains correct")
+  .option("--session <token>", "Agent/session identifier to keep with the review evidence")
+  .option("--json", "machine-readable output", false)
+  .action((o) =>
+    guard(() =>
+      recordContextReviewCmd(repoOf(o), {
+        path: o.path,
+        module: o.module,
+        reason: o.reason,
+        session: o.session,
+        json: o.json,
+      }),
+    ),
+  );
+
+program
   .command("accept-contract")
   .description("record current contract fingerprint(s) as the accepted baseline (after an intended change)")
   .option("-C, --repo <dir>", "target repo dir (default: current directory)")
@@ -123,7 +190,8 @@ program
   .option("--git", "install git hooks (default when no selector given)")
   .option("--stop", "install agent SessionStart + Stop hooks (Claude Code / Cursor / Codex)")
   .option("--agents <list>", "comma list of agent tools for --stop: claude,cursor,codex (default: all)")
-  .option("--force", "overwrite existing hooks", false)
+  .option("--force", "refresh harness-kit-managed hooks; never overwrite foreign hooks", false)
+  .option("--allow-shared-git-hooks", "acknowledge native hooks affect every linked worktree", false)
   .action((o) =>
     guard(() =>
       installHooksCmd(repoOf(o), {
@@ -131,6 +199,7 @@ program
         git: o.git,
         stop: o.stop,
         agents: o.agents ? agentList(String(o.agents)) : undefined,
+        allowSharedGitHooks: o.allowSharedGitHooks,
       }),
     ),
   );

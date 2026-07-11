@@ -17,6 +17,7 @@
 - Tests: `test/manifest.test.ts`
 - Checks: `test`, `typecheck`
 - Test touch: `required`
+- Pitfall: contract id 必须是跨平台安全的直接文件名、ASCII case-fold 后唯一且避开系统保留名；所有执行型 glob 都要限制长度并在 schema 期编译
 
 ## render — manifest -> 各工具文件的生成器
 - Entry: `src/render.ts`
@@ -67,7 +68,7 @@
 
 ## agent-hooks — Claude Code / Cursor / Codex 的 SessionStart + Stop 生命周期门禁
 - Entry: `src/commands/hook-event.ts`
-- Owns (prod): `src/commands/install-hooks.ts`, `src/commands/stop-hooks.ts`, `src/commands/hook-event.ts`
+- Owns (prod): `src/commands/install-hooks.ts`, `src/commands/stop-hooks.ts`, `src/commands/hook-event.ts`, `src/hook-status.ts`
 - Tests: `test/install-hooks.test.ts`, `test/hook-event.test.ts`
 - Checks: `test`, `typecheck`
 - Test touch: `required`
@@ -75,12 +76,41 @@
 - Pitfall: stop_hook_active 不是跳过验证的理由，每次结束尝试都重新检查
 - Pitfall: run-checks 7 分钟 + verify 2 分钟必须小于客户端 10 分钟 hook 上限，超时要来得及返回 blocking 协议
 - Pitfall: Codex linked worktree 的项目 hook 受客户端已知缺陷影响，首个会话后必须用 evidence 确认实际触发
+- Pitfall: 原生 Git hooks 可能由 linked worktrees 共享；默认拒绝共享/custom/global/foreign hooks，不能用 --force 覆盖第三方 hook
+- Pitfall: Agent hook runner 与客户端配置必须整组预检、事务写入；拒绝配置软链接和未知 hooks 结构，不能写到项目外或留半套配置
+- Pitfall: ACTIVE 只认安装器生成的精确 runner 与逐 agent/event 命令；marker 文本或不安全 HARNESS_KIT_CMD 前缀都不构成配置证据
+- Pitfall: ACTIVE evidence 必须绑定 SessionStart 时的 runner/client-config 指纹；合法 override 或配置变化后旧证据也只能 DEGRADED
+- Pitfall: Hook 配置渲染依据的旧字节必须绑定同一次事务 preflight；并发更新要失败并保留新内容
+
+## managed-generation — 生成文件接管、软链接边界与事务写入
+- Entry: `src/managed-files.ts`
+- Owns (prod): `src/managed-files.ts`, `src/adoption.ts`, `src/commands/{init,prepare-adoption,record-adoption-audit,sync}.ts`
+- Tests: `test/managed-files.test.ts`, `test/adoption.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+- Pitfall: 接管授权必须在同一次 preflight 上完成，不能先 inspect 再另一次 write 留 TOCTOU 缝隙
+- Pitfall: audit bundle/receipt 必须在仓外且内容寻址；apply 重新渲染核对，不能把候选当任意写入源
+- Pitfall: init 非 force 要先统一预检全部 scaffold；legacy 文件 mode 与 guidance 的原位字节/拓扑都必须进入审计绑定
+- Pitfall: declared/unverified 不能命名成 verified；本地 hash 没有外部身份信任根
+- Pitfall: sync 不得写 .agents/.harness-state.json；语义新鲜度只由 record-context-review 推进
+
+## context-freshness — 任意 repo 文档登记、authority 语义与 Agent review evidence
+- Entry: `src/state.ts`
+- Owns (prod): `src/state.ts`, `src/commands/record-context-review.ts`
+- Tests: `test/state.test.ts`, `test/context-review.test.ts`, `test/doctor.test.ts`, `test/verify.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+- Pitfall: root=repo 表示 path 从仓库根解析，不代表固定目录名，也不搬运业务文档
+- Pitfall: authority=derived/policy/review 都要求显式 Agent 复核；hash 只能证明之后没变，不能证明分析质量
+- Pitfall: 删除 binds、切换 authority 或绑定源缺失都必须让旧 review 失效，不能靠旧 hash 继续显示 current
 
 ## core-gates — init/sync/doctor/verify/contract/enforcement 的通用基础
 - Entry: `src/commands/verify.ts`
-- Owns (prod): `src/commands/{accept,doctor,init,sync,verify}.ts`, `src/{contracts,state,util}.ts`
+- Owns (prod): `src/commands/{accept,doctor,verify}.ts`, `src/{contracts,util}.ts`
 - Tests: `test/contracts.test.ts`, `test/state.test.ts`, `test/examples.test.ts`
 - Checks: `test`, `typecheck`
+- Pitfall: verify --json 对 repo-controlled matcher/文件系统异常也必须只输出一份结构化失败报告
+- Pitfall: accept-contract 必须先校验 manifest，基线只能写 .agents/contracts 的安全普通文件
 
 ## bundled-skills — onboard / check-loop 技能的定位、输出与维护
 - Entry: `src/skill.ts`
@@ -97,7 +127,7 @@
 
 ## repository-assets — 包元数据、生成状态、项目文档与本仓维护配置
 - Entry: `package.json`
-- Owns (prod): `.agents/**`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`, `package.json`, `pnpm-lock.yaml`
+- Owns (prod): `.agents/**`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `docs/**`, `.gitignore`, `package.json`, `pnpm-lock.yaml`
 - Tests: `test/**`
 - Checks: `test`, `typecheck`
 - Pitfall: package 声明 Node >=18，runtime 依赖不得偷偷抬高版本下限；发布包要用真实 Node 18 跑 CLI smoke

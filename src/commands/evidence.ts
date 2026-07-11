@@ -1,4 +1,5 @@
 import { collectChanges, EMPTY_TREE_BASE } from "../git";
+import { agentHookConfigurationFingerprint } from "../hook-status";
 import { readLatestValidationSession, readValidationSession } from "../validation-state";
 import { err, info, ok, warn } from "../util";
 
@@ -43,8 +44,10 @@ export function evidenceCmd(repo: string, opts: EvidenceOpts = {}): number {
     (evidence.runChecksStatus !== undefined ? evidence.runChecksStatus !== "not-verified" : evidence.ok && evidence.status !== "not-verified") &&
     !stale;
   const valid = runChecksValid && evidence.verifyPassed === true;
-  const hookActive = session.agent !== "manual" && valid;
-  const result = { ...body, runChecksValid, valid, hookActive, stale, currentFingerprint, refreshError };
+  const hookConfigurationCurrent = session.agent !== "manual" && !!session.hookConfigFingerprint &&
+    agentHookConfigurationFingerprint(repo, session.agent) === session.hookConfigFingerprint;
+  const hookActive = valid && hookConfigurationCurrent;
+  const result = { ...body, runChecksValid, valid, hookActive, hookConfigurationCurrent, stale, currentFingerprint, refreshError };
   if (opts.json) {
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
     return valid ? 0 : 1;

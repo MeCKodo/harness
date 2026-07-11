@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { collectChanges, EMPTY_TREE_BASE, gitRoot } from "../git";
+import { agentHookConfigurationFingerprint } from "../hook-status";
 import {
   clearValidationEvidence,
   markLatestVerifyResult,
@@ -98,7 +99,11 @@ function failureMessage(report: RunChecksReport | null, verifyOutput: string, to
     for (const gap of report.gaps.filter((item) => item.severity === "blocking").slice(0, 5))
       lines.push(`- [${gap.kind}] ${gap.where ? `${gap.where}: ` : ""}${gap.why}`);
   }
-  if (verifyOutput.trim()) lines.push(`- verify: ${verifyOutput.trim().split("\n").slice(-8).join(" | ")}`);
+  if (verifyOutput.trim()) {
+    const outputLines = verifyOutput.trim().split("\n");
+    const actionable = outputLines.filter((line) => /\bERR\b|timed out|budget exhausted|verify: FAILED/.test(line));
+    lines.push(`- verify: ${(actionable.length ? actionable.slice(-8) : outputLines.slice(-8)).join(" | ")}`);
+  }
   lines.push("Fix the failures, then finish again; every Stop attempt is re-checked.");
   lines.push(
     `For a genuine non-goal, only an eligible coverage gap may be waived: harness-kit run-checks --repo . --session ${token} --waive <kind> --where <scope> --reason "<why>"`,
@@ -133,6 +138,7 @@ export function hookEventCmd(repoInput: string, opts: HookEventOpts): number {
         baseSha: initial.head,
         initialFingerprint: initial.fingerprint,
         initialDirty: initial.files,
+        hookConfigFingerprint: agentHookConfigurationFingerprint(repo, opts.agent) ?? undefined,
       });
       return allow(opts.agent);
     } catch (error) {
@@ -154,6 +160,17 @@ export function hookEventCmd(repoInput: string, opts: HookEventOpts): number {
       opts.agent,
       opts.event,
       "harness-kit has no SessionStart baseline for this conversation. Start a new agent session after installing hooks; refusing to guess and miss committed changes.",
+    );
+  }
+
+  if (
+    session.hookConfigFingerprint &&
+    agentHookConfigurationFingerprint(repo, opts.agent) !== session.hookConfigFingerprint
+  ) {
+    return block(
+      opts.agent,
+      opts.event,
+      "harness-kit project hook configuration changed after SessionStart. Start a new agent session before delivery; refusing to trust evidence from another hook configuration.",
     );
   }
 

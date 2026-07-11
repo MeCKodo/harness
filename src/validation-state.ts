@@ -56,6 +56,8 @@ export interface ValidationSession {
   baseSha: string | null;
   initialFingerprint: string;
   initialDirty: string[];
+  /** Exact project-local runner and client config that produced this lifecycle session. */
+  hookConfigFingerprint?: string;
   waivers: StoredWaiver[];
   lastEvidence?: ValidationEvidence;
   createdAt: string;
@@ -163,12 +165,13 @@ export function startValidationSession(args: {
   baseSha: string | null;
   initialFingerprint: string;
   initialDirty: string[];
+  hookConfigFingerprint?: string;
 }): ValidationSession {
   const repo = gitRoot(args.repo);
   const token = validationSessionToken(args.agent, args.sessionId);
   const existing = readValidationSession(repo, token);
   if (existing) {
-    const resumed = { ...existing, lastEvidence: undefined };
+    const resumed = { ...existing, hookConfigFingerprint: args.hookConfigFingerprint, lastEvidence: undefined };
     writeValidationSession(repo, resumed);
     pruneValidationState(repo);
     return resumed;
@@ -183,6 +186,7 @@ export function startValidationSession(args: {
     baseSha: args.baseSha,
     initialFingerprint: args.initialFingerprint,
     initialDirty: args.initialDirty,
+    ...(args.hookConfigFingerprint ? { hookConfigFingerprint: args.hookConfigFingerprint } : {}),
     waivers: [],
     createdAt: now,
     updatedAt: now,
@@ -211,6 +215,29 @@ export function readLatestValidationSession(repo: string): ValidationSession | n
   pruneValidationState(repo);
   const latest = readJson<{ token?: string }>(latestPath(repo));
   return latest?.token ? readValidationSession(repo, latest.token) : null;
+}
+
+/** Latest lifecycle-hook session for this repository, independent of the
+ * manual latest pointer. A later manual command must not hide valid proof that
+ * an installed Agent hook actually ran. */
+export function readLatestHookValidationSession(repoInput: string): ValidationSession | null {
+  const repo = canonicalTarget(repoInput);
+  pruneValidationState(repo);
+  let tokens: Array<{ token: string; mtimeMs: number }>;
+  try {
+    tokens = readdirSync(stateDir(repo))
+      .map((name) => ({ name, token: name.replace(/\.json$/, "") }))
+      .filter(({ name, token }) => name.endsWith(".json") && TOKEN_RX.test(token))
+      .map(({ token }) => ({ token, mtimeMs: statSync(sessionPath(repo, token)).mtimeMs }))
+      .sort((left, right) => right.mtimeMs - left.mtimeMs);
+  } catch {
+    return null;
+  }
+  for (const { token } of tokens) {
+    const session = readValidationSession(repo, token);
+    if (session && session.agent !== "manual" && canonicalTarget(session.repoRoot) === repo) return session;
+  }
+  return null;
 }
 
 export function manualValidationSession(repoInput: string, baseSha: string | null, fingerprint: string): ValidationSession {

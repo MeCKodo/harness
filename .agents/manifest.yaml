@@ -4,7 +4,7 @@ identity:
   name: ai-harness
   summary: AI-friendly repo harness CLI —— 把工程知识变成 agent 可消费的 manifest，生成各工具文件并用门禁保证一致
   scope_in:
-    - CLI 命令 init / sync / doctor / verify / accept-contract / install-hooks / onboard / plan-checks / run-checks / evidence / check-loop（src/）
+    - CLI 命令 init / prepare-adoption / record-adoption-audit / sync / doctor / verify / accept-contract / install-hooks / onboard / plan-checks / run-checks / evidence / record-context-review / check-loop（src/）
     - manifest schema + 生成器 + 声明式不变量执行 + 派生新鲜度 + 影响面 planner
   scope_out:
     - 目标仓库自身的业务代码（本工具只读它们的 .agents/manifest.yaml）
@@ -60,6 +60,7 @@ routing:
     entry: ["src/manifest.ts"]
     dont_assume:
       - schema 改动要同步 SPEC-v0.md + examples/ 四个样板，否则 doctor 漂移
+      - contract id 会成为文件名，glob 会交给 matcher；两者必须在 schema 期限制并安全编译
     verify: ["typecheck"]
   - when: 改生成模板
     read: ["src/render.ts"]
@@ -67,6 +68,24 @@ routing:
     dont_assume:
       - AGENTS.md 有体量预算（150 行 / 700 词），细节下沉到 .agents/
     verify: ["typecheck"]
+  - when: 改生成文件安全 / 接管迁移
+    read: ["src/managed-files.ts", "src/adoption.ts", "src/commands/prepare-adoption.ts", "src/commands/record-adoption-audit.ts", "src/commands/sync.ts"]
+    entry: ["src/managed-files.ts"]
+    dont_assume:
+      - 普通文件接管必须有原样 snapshot + 仓外 candidate + 绑定报告的 pass receipt；裸 adopt 不构成授权
+      - receipt 只能证明声明顺序与候选字节未漂移，不能证明审计 Agent 独立或语义判断正确
+      - 仓内 legacy snapshot 只保存将被接管的 managed entry；嵌套入口和引用文档保持原位，只进入仓外 guidance bundle
+      - adoption index/snapshot 父链禁 symlink、no-follow/no-replace；index 失败时保留 append-only snapshot 供恢复，不能删掉可能已并发改写的 inode
+      - 只有 CLAUDE.md -> AGENTS.md 相对软链接可保留
+      - sync 只生成确定性文件，不能刷新 context review
+    verify: ["test", "typecheck"]
+  - when: 改知识新鲜度 / Agent 复核
+    read: ["src/state.ts", "src/commands/record-context-review.ts", "SPEC-v0.md"]
+    entry: ["src/state.ts"]
+    dont_assume:
+      - repo-root knowledge 路径不按 docs/knowledge/context 文件夹名写死
+      - record-context-review 只记录 Agent 已完成分析的证据，不替代分析
+    verify: ["test", "typecheck"]
   - when: 加 / 改测试
     read: ["test", "src"]
     entry: ["test"]
@@ -92,6 +111,8 @@ modules:
     tests: ["test/manifest.test.ts"]
     checks: ["test", "typecheck"]
     test_touch: required
+    pitfalls:
+      - contract id 必须是跨平台安全的直接文件名、ASCII case-fold 后唯一且避开系统保留名；所有执行型 glob 都要限制长度并在 schema 期编译
   - name: render
     role: manifest -> 各工具文件的生成器
     entry: ["src/render.ts"]
@@ -148,7 +169,7 @@ modules:
   - name: agent-hooks
     role: Claude Code / Cursor / Codex 的 SessionStart + Stop 生命周期门禁
     entry: ["src/commands/hook-event.ts"]
-    owns: ["src/commands/install-hooks.ts", "src/commands/stop-hooks.ts", "src/commands/hook-event.ts"]
+    owns: ["src/commands/install-hooks.ts", "src/commands/stop-hooks.ts", "src/commands/hook-event.ts", "src/hook-status.ts"]
     tests: ["test/install-hooks.test.ts", "test/hook-event.test.ts"]
     checks: ["test", "typecheck"]
     test_touch: required
@@ -157,14 +178,46 @@ modules:
       - stop_hook_active 不是跳过验证的理由，每次结束尝试都重新检查
       - run-checks 7 分钟 + verify 2 分钟必须小于客户端 10 分钟 hook 上限，超时要来得及返回 blocking 协议
       - Codex linked worktree 的项目 hook 受客户端已知缺陷影响，首个会话后必须用 evidence 确认实际触发
+      - 原生 Git hooks 可能由 linked worktrees 共享；默认拒绝共享/custom/global/foreign hooks，不能用 --force 覆盖第三方 hook
+      - Agent hook runner 与客户端配置必须整组预检、事务写入；拒绝配置软链接和未知 hooks 结构，不能写到项目外或留半套配置
+      - ACTIVE 只认安装器生成的精确 runner 与逐 agent/event 命令；marker 文本或不安全 HARNESS_KIT_CMD 前缀都不构成配置证据
+      - ACTIVE evidence 必须绑定 SessionStart 时的 runner/client-config 指纹；合法 override 或配置变化后旧证据也只能 DEGRADED
+      - Hook 配置渲染依据的旧字节必须绑定同一次事务 preflight；并发更新要失败并保留新内容
+  - name: managed-generation
+    role: 生成文件接管、软链接边界与事务写入
+    entry: ["src/managed-files.ts"]
+    owns: ["src/managed-files.ts", "src/adoption.ts", "src/commands/{init,prepare-adoption,record-adoption-audit,sync}.ts"]
+    tests: ["test/managed-files.test.ts", "test/adoption.test.ts"]
+    checks: ["test", "typecheck"]
+    test_touch: required
+    pitfalls:
+      - 接管授权必须在同一次 preflight 上完成，不能先 inspect 再另一次 write 留 TOCTOU 缝隙
+      - audit bundle/receipt 必须在仓外且内容寻址；apply 重新渲染核对，不能把候选当任意写入源
+      - init 非 force 要先统一预检全部 scaffold；legacy 文件 mode 与 guidance 的原位字节/拓扑都必须进入审计绑定
+      - declared/unverified 不能命名成 verified；本地 hash 没有外部身份信任根
+      - sync 不得写 .agents/.harness-state.json；语义新鲜度只由 record-context-review 推进
+  - name: context-freshness
+    role: 任意 repo 文档登记、authority 语义与 Agent review evidence
+    entry: ["src/state.ts"]
+    owns: ["src/state.ts", "src/commands/record-context-review.ts"]
+    tests: ["test/state.test.ts", "test/context-review.test.ts", "test/doctor.test.ts", "test/verify.test.ts"]
+    checks: ["test", "typecheck"]
+    test_touch: required
+    pitfalls:
+      - root=repo 表示 path 从仓库根解析，不代表固定目录名，也不搬运业务文档
+      - authority=derived/policy/review 都要求显式 Agent 复核；hash 只能证明之后没变，不能证明分析质量
+      - 删除 binds、切换 authority 或绑定源缺失都必须让旧 review 失效，不能靠旧 hash 继续显示 current
   - name: core-gates
     role: init/sync/doctor/verify/contract/enforcement 的通用基础
     entry: ["src/commands/verify.ts"]
     owns:
-      - "src/commands/{accept,doctor,init,sync,verify}.ts"
-      - "src/{contracts,state,util}.ts"
+      - "src/commands/{accept,doctor,verify}.ts"
+      - "src/{contracts,util}.ts"
     tests: ["test/contracts.test.ts", "test/state.test.ts", "test/examples.test.ts"]
     checks: ["test", "typecheck"]
+    pitfalls:
+      - verify --json 对 repo-controlled matcher/文件系统异常也必须只输出一份结构化失败报告
+      - accept-contract 必须先校验 manifest，基线只能写 .agents/contracts 的安全普通文件
   - name: bundled-skills
     role: onboard / check-loop 技能的定位、输出与维护
     entry: ["src/skill.ts"]
@@ -186,6 +239,7 @@ modules:
       - "AGENTS.md"
       - "CLAUDE.md"
       - "README.md"
+      - "docs/**"
       - ".gitignore"
       - "package.json"
       - "pnpm-lock.yaml"

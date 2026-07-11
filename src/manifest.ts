@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
+import picomatch from "picomatch";
 import YAML from "yaml";
+import { isSafeContractId } from "./contracts";
 
 export interface Capability {
   run: string;
@@ -8,6 +10,7 @@ export interface Capability {
   example?: string;
   background?: boolean;
   mutating?: boolean;
+  bootstrap?: boolean; // keep this command in the short AGENTS.md bootstrap
 }
 
 export type TestTouchPolicy = "required" | "advisory" | "off";
@@ -34,6 +37,7 @@ export interface Enforcement {
   forbid_import?: string[];
   require_pattern?: string[];
   path_glob?: string[];
+  allow_empty?: boolean; // absence is intentional; suppress the zero-file doctor warning
 }
 
 export interface Invariant {
@@ -45,10 +49,15 @@ export interface Invariant {
   llm_judge?: boolean;
 }
 
+export type KnowledgeRoot = "agents" | "repo";
+export type KnowledgeAuthority = "derived" | "policy" | "review";
+
 export interface Knowledge {
   path: string;
   role?: string;
   binds?: string[];
+  root?: KnowledgeRoot; // default: agents; repo permits any repo-relative path
+  authority?: KnowledgeAuthority; // omitted keeps legacy advisory freshness semantics
 }
 
 /** Change-type routing: tell the agent where to go per kind of change. */
@@ -116,6 +125,8 @@ export interface Manifest {
 }
 
 export const MANIFEST_REL = ".agents/manifest.yaml";
+export const SUPPORTED_MANIFEST_SPEC = "ai-harness/v0";
+const MAX_GLOB_PATTERN_LENGTH = 4_096;
 
 export function manifestPath(repo: string): string {
   return join(repo, MANIFEST_REL);
@@ -172,8 +183,67 @@ export function validateManifest(m: Manifest): ValidationIssue[] {
     }
   }
 
+  function checkPositiveGlobs(value: unknown, prefix: string): void {
+    if (!Array.isArray(value)) return;
+    for (let i = 0; i < value.length; i++) {
+      const glob = value[i];
+      if (typeof glob === "string" && glob.startsWith("!")) {
+        issues.push({
+          level: "error",
+          msg: `${prefix}[${i}] 不支持 ! 否定 glob（请使用正向 glob，并通过 owns/tests 等字段分离包含范围）`,
+        });
+      }
+    }
+  }
+
+  function checkGlobSafety(value: unknown, prefix: string): void {
+    if (!Array.isArray(value)) return;
+    for (let index = 0; index < value.length; index++) {
+      const glob = value[index];
+      if (typeof glob !== "string") continue;
+      if (glob.length > MAX_GLOB_PATTERN_LENGTH) {
+        issues.push({
+          level: "error",
+          msg: `${prefix}[${index}] 过长（最大 ${MAX_GLOB_PATTERN_LENGTH} 个字符），无法安全编译`,
+        });
+        continue;
+      }
+      try {
+        picomatch.makeRe(glob, { dot: true });
+      } catch (error) {
+        issues.push({ level: "error", msg: `${prefix}[${index}] 无法安全编译: ${(error as Error).message}` });
+      }
+    }
+  }
+
+  function checkRegexes(value: unknown, prefix: string): void {
+    if (!Array.isArray(value)) return;
+    for (let index = 0; index < value.length; index++) {
+      if (typeof value[index] !== "string") continue;
+      try {
+        new RegExp(value[index] as string);
+      } catch (error) {
+        issues.push({ level: "error", msg: `${prefix}[${index}] 不是有效正则: ${(error as Error).message}` });
+      }
+    }
+  }
+
+  function checkRelativePath(value: unknown, prefix: string): void {
+    if (typeof value !== "string") return;
+    const components = value.split(/[\\/]/);
+    if (!value || value.includes("\0") || isAbsolute(value) || components.includes(".."))
+      issues.push({ level: "error", msg: `${prefix} 必须是声明根目录内的非空相对路径，不能越界: ${value}` });
+  }
+
+  function checkRelativePaths(value: unknown, prefix: string): void {
+    if (!Array.isArray(value)) return;
+    for (let index = 0; index < value.length; index++) checkRelativePath(value[index], `${prefix}[${index}]`);
+  }
+
   if (!m.spec) issues.push({ level: "error", msg: "缺少 spec 字段" });
   else if (typeof m.spec !== "string") issues.push({ level: "error", msg: "spec 必须是字符串" });
+  else if (m.spec !== SUPPORTED_MANIFEST_SPEC)
+    issues.push({ level: "error", msg: `不支持 manifest spec ${m.spec}；当前 CLI 只支持 ${SUPPORTED_MANIFEST_SPEC}` });
   if (!m.identity || !isRecord(m.identity)) issues.push({ level: "error", msg: "identity 必须是对象" });
   if (!m.identity?.name) issues.push({ level: "error", msg: "identity.name 必填" });
   else if (typeof m.identity.name !== "string") issues.push({ level: "error", msg: "identity.name 必须是字符串" });
@@ -193,7 +263,7 @@ export function validateManifest(m: Manifest): ValidationIssue[] {
     const cap = rawCap as Capability;
     if (!isRecord(rawCap) || typeof cap.run !== "string" || !cap.run.trim())
       issues.push({ level: "error", msg: `capabilities.${verb}.run 必填且必须是字符串` });
-    for (const flag of ["background", "mutating"] as const)
+    for (const flag of ["background", "mutating", "bootstrap"] as const)
       if (isRecord(rawCap) && cap[flag] !== undefined && typeof cap[flag] !== "boolean")
         issues.push({ level: "error", msg: `capabilities.${verb}.${flag} 必须是布尔值` });
   }
@@ -219,8 +289,15 @@ export function validateManifest(m: Manifest): ValidationIssue[] {
       if (typeof rawContract[field] !== "string" || !rawContract[field])
         issues.push({ level: "error", msg: `contracts[${index}].${field} 必填且必须是字符串` });
     if (typeof rawContract.id === "string") {
-      if (contractSeen.has(rawContract.id)) issues.push({ level: "error", msg: `contract id 重复: ${rawContract.id}` });
-      contractSeen.add(rawContract.id);
+      if (rawContract.id && !isSafeContractId(rawContract.id))
+        issues.push({
+          level: "error",
+          msg: `contracts[${index}].id 必须是可移植文件名：1-128 位 ASCII 字母、数字、点、下划线或连字符，以字母或数字开头，且不能使用系统保留名`,
+        });
+      const portableKey = rawContract.id.toLowerCase();
+      if (contractSeen.has(portableKey))
+        issues.push({ level: "error", msg: `contract id 在大小写不敏感文件系统上重复: ${rawContract.id}` });
+      contractSeen.add(portableKey);
     }
     for (const field of ["check", "snapshot", "manual_verify"])
       if (rawContract[field] !== undefined && typeof rawContract[field] !== "string")
@@ -259,10 +336,19 @@ export function validateManifest(m: Manifest): ValidationIssue[] {
     checkStrArr(inv.enforcement?.forbid_pattern as unknown[] | undefined, `${pfx}.forbid_pattern`);
     checkStrArr(inv.enforcement?.forbid_import as unknown[] | undefined, `${pfx}.forbid_import`);
     checkStrArr(inv.enforcement?.require_pattern as unknown[] | undefined, `${pfx}.require_pattern`);
+    checkRegexes(inv.enforcement?.forbid_pattern, `${pfx}.forbid_pattern`);
+    checkRegexes(inv.enforcement?.forbid_import, `${pfx}.forbid_import`);
+    checkRegexes(inv.enforcement?.require_pattern, `${pfx}.require_pattern`);
     checkStrArr(inv.enforcement?.path_glob as unknown[] | undefined, `${pfx}.path_glob`);
+    checkPositiveGlobs(inv.enforcement?.path_glob, `${pfx}.path_glob`);
+    checkGlobSafety(inv.enforcement?.path_glob, `${pfx}.path_glob`);
+    checkRelativePaths(inv.enforcement?.path_glob, `${pfx}.path_glob`);
+    if (inv.enforcement?.allow_empty !== undefined && typeof inv.enforcement.allow_empty !== "boolean")
+      issues.push({ level: "error", msg: `invariant ${label}.enforcement.allow_empty 必须是布尔值` });
   }
 
   // knowledge.binds
+  const knowledgePaths = new Set<string>();
   for (const rawKnowledge of checkedList(m.knowledge, "knowledge")) {
     if (!isRecord(rawKnowledge)) {
       issues.push({ level: "error", msg: "knowledge 条目必须是对象" });
@@ -270,7 +356,17 @@ export function validateManifest(m: Manifest): ValidationIssue[] {
     }
     const k = rawKnowledge as unknown as Knowledge;
     if (typeof k.path !== "string" || !k.path) issues.push({ level: "error", msg: "knowledge.path 必填且必须是字符串" });
+    else {
+      checkRelativePath(k.path, `knowledge "${k.path}" 的 path`);
+      if (knowledgePaths.has(k.path)) issues.push({ level: "error", msg: `knowledge path 重复，record-context-review 无法消歧: ${k.path}` });
+      knowledgePaths.add(k.path);
+    }
     checkStrArr(k.binds as unknown[] | undefined, `knowledge "${k.path}" 的 binds`);
+    checkRelativePaths(k.binds, `knowledge "${k.path}" 的 binds`);
+    if (k.root !== undefined && !["agents", "repo"].includes(String(k.root)))
+      issues.push({ level: "error", msg: `knowledge "${k.path}" 的 root 必须是 agents/repo` });
+    if (k.authority !== undefined && !["derived", "policy", "review"].includes(String(k.authority)))
+      issues.push({ level: "error", msg: `knowledge "${k.path}" 的 authority 必须是 derived/policy/review` });
   }
 
   const capVerbs = new Set(Object.keys(capabilities));
@@ -284,6 +380,8 @@ export function validateManifest(m: Manifest): ValidationIssue[] {
     for (const field of ["read", "entry", "dont_assume", "verify"] as const) {
       checkStrArr(r[field] as unknown[] | undefined, `routing "${r.when}" 的 ${field}`);
     }
+    checkRelativePaths(r.read, `routing "${r.when}" 的 read`);
+    checkRelativePaths(r.entry, `routing "${r.when}" 的 entry`);
     for (const v of Array.isArray(r.verify) ? r.verify : []) {
       if (typeof v !== "string") continue; // 上面已报错，跳过语义检查
       // a verify step is either a known capability verb or a raw command (has a space)
@@ -311,6 +409,13 @@ export function validateManifest(m: Manifest): ValidationIssue[] {
     for (const field of ["entry", "upstream", "downstream", "must_know", "pitfalls", "owns", "tests", "checks"] as const) {
       checkStrArr(mod[field], `module "${mod.name}" 的 ${field}`);
     }
+    checkRelativePaths(mod.entry, `module "${mod.name}" 的 entry`);
+    checkRelativePaths(mod.owns, `module "${mod.name}" 的 owns`);
+    checkRelativePaths(mod.tests, `module "${mod.name}" 的 tests`);
+    checkPositiveGlobs(mod.owns, `module "${mod.name}" 的 owns`);
+    checkPositiveGlobs(mod.tests, `module "${mod.name}" 的 tests`);
+    checkGlobSafety(mod.owns, `module "${mod.name}" 的 owns`);
+    checkGlobSafety(mod.tests, `module "${mod.name}" 的 tests`);
     for (const field of ["playbook", "remediation"] as const) {
       if (mod[field] !== undefined && typeof mod[field] !== "string")
         issues.push({ level: "error", msg: `module "${mod.name}" 的 ${field} 必须是字符串` });
@@ -378,6 +483,9 @@ export function validateManifest(m: Manifest): ValidationIssue[] {
       }
     }
     checkStrArr(v.required_coverage, "validation.required_coverage");
+    checkPositiveGlobs(v.required_coverage, "validation.required_coverage");
+    checkGlobSafety(v.required_coverage, "validation.required_coverage");
+    checkRelativePaths(v.required_coverage, "validation.required_coverage");
     if (v.policies !== undefined && !isRecord(v.policies))
       issues.push({ level: "error", msg: "validation.policies 必须是对象" });
     const defaultTouch = isRecord(v.policies) ? v.policies.test_touch_default : undefined;
@@ -387,5 +495,6 @@ export function validateManifest(m: Manifest): ValidationIssue[] {
   if (m.playbooks !== undefined && !isRecord(m.playbooks)) issues.push({ level: "error", msg: "playbooks 必须是对象" });
   else if (m.playbooks?.dir !== undefined && typeof m.playbooks.dir !== "string")
     issues.push({ level: "error", msg: "playbooks.dir 必须是字符串" });
+  else checkRelativePath(m.playbooks?.dir, "playbooks.dir");
   return issues;
 }

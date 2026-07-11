@@ -6,7 +6,7 @@
 
 ## Working agreement (read first)
 
-`AGENTS.md`, `CLAUDE.md`, `.agents/routing.md`, and `.agents/modules.md` are GENERATED from `.agents/manifest.yaml`. Do NOT edit those files by hand — edit the manifest and run `harness-kit sync`. Knowledge is hand-authored; `.agents/hooks/` is managed by `harness-kit install-hooks`.
+`AGENTS.md`, `CLAUDE.md`, and `.agents/reference.md` are GENERATED from `.agents/manifest.yaml`; `.agents/routing.md` / `.agents/modules.md` are generated when those sections are declared. Do NOT edit those files by hand — edit the manifest and run `harness-kit sync`. Knowledge is hand-authored; `.agents/hooks/` is managed by `harness-kit install-hooks`.
 
 Before you touch code:
 1. Post a **Task Brief** in chat: what you'll change, which change-type it is, which layers/files it touches, and how you'll verify.
@@ -16,7 +16,7 @@ Before you touch code:
 Before you finish:
 3. Run `harness-kit run-checks` to verify THIS change (impact-driven) and `harness-kit verify` for drift/invariants. Treat blocking gaps as unfinished work — close them; only eligible coverage gaps may be waived with a scoped reason.
 4. **Never claim a check you didn't run.** If something is a GAP (packaging, real network, prod upload), say so — don't pretend it passed.
-5. If you learned something an agent could not infer from code (a gotcha, a decision, a fix), capture it under `.agents/knowledge/` (a journal ADR for decisions). Do NOT record one-off noise or anything already obvious from the code.
+5. If you learned something an agent could not infer from code (a gotcha, a decision, a fix), update the registered knowledge source in place, or add new Harness-owned knowledge under `.agents/knowledge/` (a journal ADR for decisions). Never move/copy an existing repo document just to fit a folder name. Do NOT record one-off noise or anything already obvious from the code.
 
 ## Scope
 
@@ -38,18 +38,11 @@ Downstream: 终端用户浏览器, CDN（构建产物托管）
 ## Commands
 
 - `setup`: `pnpm install`
-- `run`: `pnpm dev` — 本地 dev server (long-running)
 - `build`: `pnpm build` — 产物到 dist/
 - `typecheck`: `tsc --noEmit`
 - `lint`: `pnpm lint`
 - `test`: `pnpm test` — Vitest 单测
-- `e2e`: `pnpm e2e` — Playwright 端到端
 - `verify`: `harness verify`
-
-## Environment
-
-- `VITE_API_BASE_URL` (required) — 后端 API 根地址
-- `VITE_SENTRY_DSN` (secret — never hardcode/commit) — 前端错误上报
 
 ## Contracts (breaking changes need a version bump)
 
@@ -65,7 +58,8 @@ Run `harness-kit verify` to check the enforceable ones.
 
 ## Knowledge & maps (load on demand)
 
-- Domain / conventions / decisions: `.agents/knowledge/`
+- Harness-owned domain / conventions / decisions: `.agents/knowledge/`
+- Full commands, environment, and registered knowledge catalog: `.agents/reference.md`
 - Module map + common pitfalls: `.agents/modules.md`
 - Implement -> verify loop (deep guide): run `harness-kit check-loop`
 - Tooling adoption log (earn heavier tooling): `.agents/adoption.md`

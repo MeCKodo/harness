@@ -1,12 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { installHooksCmd } from "../src/commands/install-hooks";
 import { syncCmd } from "../src/commands/sync";
+import { inspectAgentHookStatus } from "../src/hook-status";
+import { manualValidationSession } from "../src/validation-state";
 
 const CLI = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
 const TSX = fileURLToPath(new URL("../node_modules/.bin/tsx", import.meta.url));
@@ -107,6 +109,7 @@ test("Claude/Codex block with decision JSON while Cursor requests a follow-up", 
 
 test("SessionStart preserves the exact base, committed changes are checked, and stop_hook_active never bypasses", () => {
   const repo = fixture();
+  writeFileSync(join(repo, ".git", "info", "exclude"), ".codex/\n");
   assert.equal(installHooksCmd(repo, { stop: true, agents: ["codex"] }), 0);
   commit(repo, "install lifecycle hooks");
   const payload = { session_id: "session-1" };
@@ -138,11 +141,39 @@ test("SessionStart preserves the exact base, committed changes are checked, and 
   assert.equal(body.evidence.status, "verified");
   assert.deepEqual(body.evidence.changed, ["src/core.ts", "test/core.test.ts"]);
   assert.equal(body.evidence.verifyPassed, true);
+  const hookStatus = inspectAgentHookStatus(repo);
+  assert.equal(hookStatus.state, "active");
+  assert.equal(hookStatus.evidenceAgent, "codex");
+  manualValidationSession(repo, null, "manual-latest-pointer");
+  assert.equal(inspectAgentHookStatus(repo).state, "active", "manual commands must not hide valid hook evidence");
+
+  const hooksPath = join(repo, ".codex", "hooks.json");
+  const originalHooks = readFileSync(hooksPath, "utf8");
+  const overridden = JSON.parse(originalHooks);
+  overridden.hooks.SessionStart[0].hooks[0].command =
+    `HARNESS_KIT_CMD=true ${overridden.hooks.SessionStart[0].hooks[0].command}`;
+  overridden.hooks.Stop[0].hooks[0].command = `HARNESS_KIT_CMD=true ${overridden.hooks.Stop[0].hooks[0].command}`;
+  writeFileSync(hooksPath, JSON.stringify(overridden));
+  assert.equal(inspectAgentHookStatus(repo).state, "degraded");
+  const rebound = spawnSync(TSX, [CLI, "evidence", "--repo", repo, "--session", body.session, "--json"], {
+    cwd: repo,
+    encoding: "utf8",
+  });
+  assert.equal(rebound.status, 0, "delivery evidence remains valid even when it no longer proves Hook ACTIVE");
+  assert.equal(JSON.parse(rebound.stdout).valid, true);
+  assert.equal(JSON.parse(rebound.stdout).hookActive, false);
+  assert.equal(JSON.parse(rebound.stdout).hookConfigurationCurrent, false);
+  writeFileSync(hooksPath, originalHooks);
+  assert.equal(inspectAgentHookStatus(repo).state, "active");
 
   write(repo, "src/core.ts", "export const value = 3;\n");
-  const stale = spawnSync(TSX, [CLI, "evidence", "--repo", repo, "--json"], { cwd: repo, encoding: "utf8" });
+  const stale = spawnSync(TSX, [CLI, "evidence", "--repo", repo, "--session", body.session, "--json"], {
+    cwd: repo,
+    encoding: "utf8",
+  });
   assert.equal(stale.status, 1);
   assert.equal(JSON.parse(stale.stdout).stale, true);
+  assert.equal(inspectAgentHookStatus(repo).state, "degraded");
 });
 
 test("a hung verify contract is timed out early enough to return the client's blocking protocol", () => {

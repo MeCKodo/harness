@@ -37,7 +37,7 @@ test("hash changes when a bound file changes (this is the drift signal)", () => 
 test("a missing bound file is recorded as (missing), not a crash", () => {
   const repo = mkdtempSync(join(tmpdir(), "harness-state-"));
   const m: Manifest = {
-    spec: "v",
+    spec: "ai-harness/v0",
     identity: { name: "t", summary: "s" },
     knowledge: [{ path: "k", binds: ["nope.ts"] }],
   };
@@ -49,7 +49,7 @@ test("a directory entry does not crash with EISDIR (recorded as (missing))", () 
   const repo = mkdtempSync(join(tmpdir(), "harness-state-"));
   mkdirSync(join(repo, "src"), { recursive: true }); // entry points at a directory
   const m: Manifest = {
-    spec: "v",
+    spec: "ai-harness/v0",
     identity: { name: "t", summary: "s" },
     modules: [{ name: "core", role: "r", entry: ["src"] }],
   };

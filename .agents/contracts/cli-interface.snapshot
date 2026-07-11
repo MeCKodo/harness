@@ -4,32 +4,39 @@ Usage: harness-kit [options] [command]
 AI-friendly repo harness
 
 Options:
-  -V, --version              output the version number
-  -h, --help                 display help for command
+  -V, --version                    output the version number
+  -h, --help                       display help for command
 
 Commands:
-  init [options]             scaffold .agents/ skeleton + starter manifest
-  sync [options]             generate tool files (AGENTS.md, CLAUDE.md) from
-                             manifest
-  doctor [options]           dev-time health check: completeness, drift,
-                             freshness, tech debt
-  verify [options]           CI gate: run enforceable invariants + contracts +
-                             drift; nonzero on failure
-  plan-checks [options]      compute which declared checks THIS change should
-                             run (impact-driven, executes nothing)
-  run-checks [options]       plan + run resolved checks; record evidence;
-                             nonzero on failure/unresolved blocking gap
-  evidence [options]         show the latest durable run-checks evidence for
-                             this worktree/session
-  accept-contract [options]  record current contract fingerprint(s) as the
-                             accepted baseline (after an intended change)
-  install-hooks [options]    install git hooks and/or agent SessionStart + Stop
-                             hooks (run-checks + verify gate)
-  onboard                    print the erzhe-harness-init skill for an agent to
-                             follow (use via npx, always latest)
-  check-loop                 print the harness-check-loop skill: the implement
-                             -> verify loop for an agent
-  help [command]             display help for command
+  init [options]                   scaffold .agents/ skeleton + starter manifest
+  sync [options]                   generate tool files (AGENTS.md, CLAUDE.md)
+                                   from manifest
+  prepare-adoption [options]       render a private, repository-external
+                                   candidate bundle for blind legacy review
+  record-adoption-audit [options]  record a declared pass/fail review receipt
+                                   bound to one adoption candidate and report
+  doctor [options]                 dev-time health check: completeness, drift,
+                                   freshness, tech debt
+  verify [options]                 CI gate: run enforceable invariants +
+                                   contracts + drift; nonzero on failure
+  plan-checks [options]            compute which declared checks THIS change
+                                   should run (impact-driven, executes nothing)
+  run-checks [options]             plan + run resolved checks; record evidence;
+                                   nonzero on failure/unresolved blocking gap
+  evidence [options]               show the latest durable run-checks evidence
+                                   for this worktree/session
+  record-context-review [options]  record an Agent's completed review of one
+                                   knowledge item or module against its bound
+                                   sources
+  accept-contract [options]        record current contract fingerprint(s) as the
+                                   accepted baseline (after an intended change)
+  install-hooks [options]          install git hooks and/or agent SessionStart +
+                                   Stop hooks (run-checks + verify gate)
+  onboard                          print the erzhe-harness-init skill for an
+                                   agent to follow (use via npx, always latest)
+  check-loop                       print the harness-check-loop skill: the
+                                   implement -> verify loop for an agent
+  help [command]                   display help for command
 
 ## init
 Usage: harness-kit init [options]
@@ -42,14 +49,46 @@ Options:
   --force           overwrite existing manifest (default: false)
   -h, --help        display help for command
 
+## prepare-adoption
+Usage: harness-kit prepare-adoption [options]
+
+render a private, repository-external candidate bundle for blind legacy review
+
+Options:
+  -C, --repo <dir>  target repo dir (default: current directory)
+  --out <dir>       new or empty output directory outside the repository
+  --json            machine-readable output (default: false)
+  -h, --help        display help for command
+
+## record-adoption-audit
+Usage: harness-kit record-adoption-audit [options]
+
+record a declared pass/fail review receipt bound to one adoption candidate and
+report
+
+Options:
+  -C, --repo <dir>       target repo dir (default: current directory)
+  --candidate <dir>      prepared adoption bundle outside the repository
+  --verdict <pass|fail>  declared audit verdict
+  --report <file>        independent audit report to hash and bind
+  --reason <text>        non-empty reviewer rationale
+  --out <receipt>        receipt path outside the repository (default: candidate
+                         bundle)
+  --json                 machine-readable output (default: false)
+  -h, --help             display help for command
+
 ## sync
 Usage: harness-kit sync [options]
 
 generate tool files (AGENTS.md, CLAUDE.md) from manifest
 
 Options:
-  -C, --repo <dir>  target repo dir (default: current directory)
-  -h, --help        display help for command
+  -C, --repo <dir>   target repo dir (default: current directory)
+  --adopt-existing   apply only a content-bound, pass-attested legacy adoption
+                     (default: false)
+  --candidate <dir>  prepared adoption bundle outside the repository
+  --audit <receipt>  pass audit receipt bound to the candidate bundle
+  -h, --help         display help for command
 
 ## doctor
 Usage: harness-kit doctor [options]
@@ -67,6 +106,7 @@ CI gate: run enforceable invariants + contracts + drift; nonzero on failure
 
 Options:
   -C, --repo <dir>  target repo dir (default: current directory)
+  --json            machine-readable output (default: false)
   -h, --help        display help for command
 
 ## plan-checks
@@ -117,6 +157,22 @@ Options:
   --json             machine-readable output (default: false)
   -h, --help         display help for command
 
+## record-context-review
+Usage: harness-kit record-context-review [options]
+
+record an Agent's completed review of one knowledge item or module against its
+bound sources
+
+Options:
+  -C, --repo <dir>         target repo dir (default: current directory)
+  --path <knowledge-path>  exact knowledge.path from the manifest
+  --module <name>          exact module name (mutually exclusive with --path)
+  --reason <text>          what was reviewed and why the context remains correct
+  --session <token>        Agent/session identifier to keep with the review
+                           evidence
+  --json                   machine-readable output (default: false)
+  -h, --help               display help for command
+
 ## accept-contract
 Usage: harness-kit accept-contract [options]
 
@@ -135,14 +191,17 @@ install git hooks and/or agent SessionStart + Stop hooks (run-checks + verify
 gate)
 
 Options:
-  -C, --repo <dir>  target repo dir (default: current directory)
-  --git             install git hooks (default when no selector given)
-  --stop            install agent SessionStart + Stop hooks (Claude Code /
-                    Cursor / Codex)
-  --agents <list>   comma list of agent tools for --stop: claude,cursor,codex
-                    (default: all)
-  --force           overwrite existing hooks (default: false)
-  -h, --help        display help for command
+  -C, --repo <dir>          target repo dir (default: current directory)
+  --git                     install git hooks (default when no selector given)
+  --stop                    install agent SessionStart + Stop hooks (Claude Code
+                            / Cursor / Codex)
+  --agents <list>           comma list of agent tools for --stop:
+                            claude,cursor,codex (default: all)
+  --force                   refresh harness-kit-managed hooks; never overwrite
+                            foreign hooks (default: false)
+  --allow-shared-git-hooks  acknowledge native hooks affect every linked
+                            worktree (default: false)
+  -h, --help                display help for command
 
 ## onboard
 Usage: harness-kit onboard [options]

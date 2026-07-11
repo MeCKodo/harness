@@ -41,7 +41,7 @@ function runJson(repo: string, opts: Partial<RunChecksOpts> = {}): { code: numbe
   return captureJson(() => runChecksCmd(repo, { json: true, ...opts }));
 }
 
-const MANIFEST = `spec: v
+const MANIFEST = `spec: ai-harness/v0
 identity: { name: t, summary: s }
 capabilities:
   test: { run: "true" }
@@ -245,7 +245,7 @@ test("a staged test modification followed by a worktree deletion still blocks re
 });
 
 test("a nested harness target sees target-relative changes and excludes sibling packages", () => {
-  const manifest = `spec: v
+  const manifest = `spec: ai-harness/v0
 identity: { name: nested, summary: nested fixture }
 capabilities:
   test: { run: "true" }

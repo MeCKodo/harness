@@ -131,7 +131,7 @@ test("standalone verify completes matching manual delivery evidence", () => {
   mkdirSync(join(repo, "test"), { recursive: true });
   writeFileSync(
     join(repo, ".agents", "manifest.yaml"),
-    `spec: v
+    `spec: ai-harness/v0
 identity: { name: fixture, summary: fixture }
 capabilities:
   test: { run: "true" }

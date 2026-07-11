@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { planChecks } from "../src/planner";
 import type { Manifest } from "../src/manifest";
 
-const base: Manifest = { spec: "v", identity: { name: "x", summary: "s" } };
+const base: Manifest = { spec: "ai-harness/v0", identity: { name: "x", summary: "s" } };
 
 function withModules(extra: Partial<Manifest>): Manifest {
   return { ...base, capabilities: { test: { run: "t" }, typecheck: { run: "tc" } }, ...extra };

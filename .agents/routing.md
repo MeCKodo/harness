@@ -14,6 +14,7 @@ Find the change-type that matches your task and follow that row before editing.
 - Read first: `src/manifest.ts`, `SPEC-v0.md`
 - Entry points: `src/manifest.ts`
 - Do NOT assume: schema 改动要同步 SPEC-v0.md + examples/ 四个样板，否则 doctor 漂移
+- Do NOT assume: contract id 会成为文件名，glob 会交给 matcher；两者必须在 schema 期限制并安全编译
 - Minimum verification: `typecheck`
 
 ## 改生成模板
@@ -21,6 +22,24 @@ Find the change-type that matches your task and follow that row before editing.
 - Entry points: `src/render.ts`
 - Do NOT assume: AGENTS.md 有体量预算（150 行 / 700 词），细节下沉到 .agents/
 - Minimum verification: `typecheck`
+
+## 改生成文件安全 / 接管迁移
+- Read first: `src/managed-files.ts`, `src/adoption.ts`, `src/commands/prepare-adoption.ts`, `src/commands/record-adoption-audit.ts`, `src/commands/sync.ts`
+- Entry points: `src/managed-files.ts`
+- Do NOT assume: 普通文件接管必须有原样 snapshot + 仓外 candidate + 绑定报告的 pass receipt；裸 adopt 不构成授权
+- Do NOT assume: receipt 只能证明声明顺序与候选字节未漂移，不能证明审计 Agent 独立或语义判断正确
+- Do NOT assume: 仓内 legacy snapshot 只保存将被接管的 managed entry；嵌套入口和引用文档保持原位，只进入仓外 guidance bundle
+- Do NOT assume: adoption index/snapshot 父链禁 symlink、no-follow/no-replace；index 失败时保留 append-only snapshot 供恢复，不能删掉可能已并发改写的 inode
+- Do NOT assume: 只有 CLAUDE.md -> AGENTS.md 相对软链接可保留
+- Do NOT assume: sync 只生成确定性文件，不能刷新 context review
+- Minimum verification: `test`, `typecheck`
+
+## 改知识新鲜度 / Agent 复核
+- Read first: `src/state.ts`, `src/commands/record-context-review.ts`, `SPEC-v0.md`
+- Entry points: `src/state.ts`
+- Do NOT assume: repo-root knowledge 路径不按 docs/knowledge/context 文件夹名写死
+- Do NOT assume: record-context-review 只记录 Agent 已完成分析的证据，不替代分析
+- Minimum verification: `test`, `typecheck`
 
 ## 加 / 改测试
 - Read first: `test`, `src`
