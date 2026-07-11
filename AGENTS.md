@@ -6,22 +6,23 @@ AI-friendly repo harness CLI —— 把工程知识变成 agent 可消费的 man
 
 ## Working agreement (read first)
 
-This file and everything under `.agents/` are GENERATED from `.agents/manifest.yaml`. Do NOT edit them by hand — edit the manifest and run `harness-kit sync`.
+`AGENTS.md`, `CLAUDE.md`, `.agents/routing.md`, and `.agents/modules.md` are GENERATED from `.agents/manifest.yaml`. Do NOT edit those files by hand — edit the manifest and run `harness-kit sync`. Knowledge is hand-authored; `.agents/hooks/` is managed by `harness-kit install-hooks`.
 
 Before you touch code:
 1. Post a **Task Brief** in chat: what you'll change, which change-type it is, which layers/files it touches, and how you'll verify.
 2. Find your change-type in `.agents/routing.md` and read the files it points to. Do NOT full-repo grep and guess.
+   If lifecycle hooks are not active, record the task-start commit before editing so committed work can later be checked with `run-checks --base <sha>`.
 
 Before you finish:
-3. Run `harness-kit verify`. It enforces the invariants below and prints a **GAPS** list of what it cannot check.
+3. Run `harness-kit run-checks` to verify THIS change (impact-driven) and `harness-kit verify` for drift/invariants. Treat blocking gaps as unfinished work — close them; only eligible coverage gaps may be waived with a scoped reason.
 4. **Never claim a check you didn't run.** If something is a GAP (packaging, real network, prod upload), say so — don't pretend it passed.
 5. If you learned something an agent could not infer from code (a gotcha, a decision, a fix), capture it under `.agents/knowledge/` (a journal ADR for decisions). Do NOT record one-off noise or anything already obvious from the code.
 
 ## Scope
 
 In scope:
-- CLI 命令 init / sync / doctor / verify / accept-contract / install-hooks / onboard（src/）
-- manifest schema + 生成器 + 声明式不变量执行 + 派生新鲜度
+- CLI 命令 init / sync / doctor / verify / accept-contract / install-hooks / onboard / plan-checks / run-checks / evidence / check-loop（src/）
+- manifest schema + 生成器 + 声明式不变量执行 + 派生新鲜度 + 影响面 planner
 
 Out of scope (do NOT modify here):
 - 目标仓库自身的业务代码（本工具只读它们的 .agents/manifest.yaml）
@@ -42,7 +43,7 @@ Downstream: 任何被 harness 初始化的仓库
 
 ## Contracts (breaking changes need a version bump)
 
-- cli-interface [cli-interface] (breaking -> minor): init/sync/doctor/verify/accept-contract/install-hooks/onboard 命令 + flags；改动即影响所有使用者
+- cli-interface [cli-interface] (breaking -> minor): 所有公开命令及各自 flags；改动即影响所有使用者
 - manifest-schema [other] (breaking -> major): .agents/manifest.yaml 的 schema（见 SPEC-v0.md）；删字段/改语义会破坏已初始化的仓
 
 ## Invariants (must hold)
@@ -57,5 +58,6 @@ Run `harness-kit verify` to check the enforceable ones.
 - Domain / conventions / decisions: `.agents/knowledge/`
 - Change-type routing (read before editing): `.agents/routing.md`
 - Module map + common pitfalls: `.agents/modules.md`
+- Implement -> verify loop (deep guide): run `harness-kit check-loop`
 - Tooling adoption log (earn heavier tooling): `.agents/adoption.md`
 - Task playbooks: `.agents/playbooks/`

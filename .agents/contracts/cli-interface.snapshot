@@ -1,3 +1,4 @@
+## root
 Usage: harness-kit [options] [command]
 
 AI-friendly repo harness
@@ -14,10 +15,148 @@ Commands:
                              freshness, tech debt
   verify [options]           CI gate: run enforceable invariants + contracts +
                              drift; nonzero on failure
+  plan-checks [options]      compute which declared checks THIS change should
+                             run (impact-driven, executes nothing)
+  run-checks [options]       plan + run resolved checks; record evidence;
+                             nonzero on failure/unresolved blocking gap
+  evidence [options]         show the latest durable run-checks evidence for
+                             this worktree/session
   accept-contract [options]  record current contract fingerprint(s) as the
                              accepted baseline (after an intended change)
-  install-hooks [options]    install git hooks: pre-commit auto-sync + pre-push
-                             verify (drift gate)
+  install-hooks [options]    install git hooks and/or agent SessionStart + Stop
+                             hooks (run-checks + verify gate)
   onboard                    print the erzhe-harness-init skill for an agent to
                              follow (use via npx, always latest)
+  check-loop                 print the harness-check-loop skill: the implement
+                             -> verify loop for an agent
   help [command]             display help for command
+
+## init
+Usage: harness-kit init [options]
+
+scaffold .agents/ skeleton + starter manifest
+
+Options:
+  -C, --repo <dir>  target repo dir (default: current directory)
+  --name <name>     project name (default: "my-project")
+  --force           overwrite existing manifest (default: false)
+  -h, --help        display help for command
+
+## sync
+Usage: harness-kit sync [options]
+
+generate tool files (AGENTS.md, CLAUDE.md) from manifest
+
+Options:
+  -C, --repo <dir>  target repo dir (default: current directory)
+  -h, --help        display help for command
+
+## doctor
+Usage: harness-kit doctor [options]
+
+dev-time health check: completeness, drift, freshness, tech debt
+
+Options:
+  -C, --repo <dir>  target repo dir (default: current directory)
+  -h, --help        display help for command
+
+## verify
+Usage: harness-kit verify [options]
+
+CI gate: run enforceable invariants + contracts + drift; nonzero on failure
+
+Options:
+  -C, --repo <dir>  target repo dir (default: current directory)
+  -h, --help        display help for command
+
+## plan-checks
+Usage: harness-kit plan-checks [options]
+
+compute which declared checks THIS change should run (impact-driven, executes
+nothing)
+
+Options:
+  -C, --repo <dir>      target repo dir (default: current directory)
+  --base <ref>          diff base (default: working tree + untracked vs HEAD)
+                        (default: "HEAD")
+  --profile <checkset>  use a validation.checksets entry instead of per-module
+                        checks
+  --json                machine-readable output (default: false)
+  -h, --help            display help for command
+
+## run-checks
+Usage: harness-kit run-checks [options]
+
+plan + run resolved checks; record evidence; nonzero on failure/unresolved
+blocking gap
+
+Options:
+  -C, --repo <dir>      target repo dir (default: current directory)
+  --base <ref>          task-start ref; required for manual proof after task
+                        changes were committed
+  --profile <checkset>  use a validation.checksets entry instead of per-module
+                        checks
+  --waive <kind>        waive one eligible coverage gap for this exact change
+                        fingerprint
+  --where <scope>       exact gap scope; required when a kind matches multiple
+                        gaps
+  --reason <text>       reason recorded with --waive
+  --session <token>     validation session token (normally supplied by an agent
+                        hook)
+  --json                machine-readable output (default: false)
+  -h, --help            display help for command
+
+## evidence
+Usage: harness-kit evidence [options]
+
+show the latest durable run-checks evidence for this worktree/session
+
+Options:
+  -C, --repo <dir>   target repo dir (default: current directory)
+  --session <token>  specific validation session token
+  --json             machine-readable output (default: false)
+  -h, --help         display help for command
+
+## accept-contract
+Usage: harness-kit accept-contract [options]
+
+record current contract fingerprint(s) as the accepted baseline (after an
+intended change)
+
+Options:
+  -C, --repo <dir>  target repo dir (default: current directory)
+  --id <id>         only this contract (default: all with a snapshot command)
+  -h, --help        display help for command
+
+## install-hooks
+Usage: harness-kit install-hooks [options]
+
+install git hooks and/or agent SessionStart + Stop hooks (run-checks + verify
+gate)
+
+Options:
+  -C, --repo <dir>  target repo dir (default: current directory)
+  --git             install git hooks (default when no selector given)
+  --stop            install agent SessionStart + Stop hooks (Claude Code /
+                    Cursor / Codex)
+  --agents <list>   comma list of agent tools for --stop: claude,cursor,codex
+                    (default: all)
+  --force           overwrite existing hooks (default: false)
+  -h, --help        display help for command
+
+## onboard
+Usage: harness-kit onboard [options]
+
+print the erzhe-harness-init skill for an agent to follow (use via npx, always
+latest)
+
+Options:
+  -h, --help  display help for command
+
+## check-loop
+Usage: harness-kit check-loop [options]
+
+print the harness-check-loop skill: the implement -> verify loop for an agent
+
+Options:
+  -h, --help  display help for command

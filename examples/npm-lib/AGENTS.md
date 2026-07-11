@@ -6,14 +6,15 @@
 
 ## Working agreement (read first)
 
-This file and everything under `.agents/` are GENERATED from `.agents/manifest.yaml`. Do NOT edit them by hand — edit the manifest and run `harness-kit sync`.
+`AGENTS.md`, `CLAUDE.md`, `.agents/routing.md`, and `.agents/modules.md` are GENERATED from `.agents/manifest.yaml`. Do NOT edit those files by hand — edit the manifest and run `harness-kit sync`. Knowledge is hand-authored; `.agents/hooks/` is managed by `harness-kit install-hooks`.
 
 Before you touch code:
 1. Post a **Task Brief** in chat: what you'll change, which change-type it is, which layers/files it touches, and how you'll verify.
 2. Read the relevant files before editing. Do NOT full-repo grep and guess.
+   If lifecycle hooks are not active, record the task-start commit before editing so committed work can later be checked with `run-checks --base <sha>`.
 
 Before you finish:
-3. Run `harness-kit verify`. It enforces the invariants below and prints a **GAPS** list of what it cannot check.
+3. Run `harness-kit run-checks` to verify THIS change (impact-driven) and `harness-kit verify` for drift/invariants. Treat blocking gaps as unfinished work — close them; only eligible coverage gaps may be waived with a scoped reason.
 4. **Never claim a check you didn't run.** If something is a GAP (packaging, real network, prod upload), say so — don't pretend it passed.
 5. If you learned something an agent could not infer from code (a gotcha, a decision, a fix), capture it under `.agents/knowledge/` (a journal ADR for decisions). Do NOT record one-off noise or anything already obvious from the code.
 
@@ -58,5 +59,7 @@ Run `harness-kit verify` to check the enforceable ones.
 ## Knowledge & maps (load on demand)
 
 - Domain / conventions / decisions: `.agents/knowledge/`
+- Module map + common pitfalls: `.agents/modules.md`
+- Implement -> verify loop (deep guide): run `harness-kit check-loop`
 - Tooling adoption log (earn heavier tooling): `.agents/adoption.md`
 - Task playbooks: `.agents/playbooks/`

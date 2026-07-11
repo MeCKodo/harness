@@ -39,5 +39,22 @@ knowledge:
   - path: knowledge/journal/
     role: journal
 
+modules:
+  - name: core
+    role: 示例核心逻辑
+    entry: ["src/good.ts"]
+    owns: ["src/**"]              # 把改动映射到本模块
+    tests: ["test/**"]           # 覆盖本模块的测试
+    checks: ["test"]             # 变更时跑的 capability 动词
+    test_touch: required          # 核心逻辑必须同步补/改测试
+    playbook: verify-core.md     # 如何验收本模块改动
+
+validation:
+  policies:
+    test_touch_default: advisory
+  required_coverage: ["src/**"]
+  defaults:
+    no_match: ["test"]           # 改动没命中任何 owns 时兜底跑
+
 playbooks:
   dir: playbooks/

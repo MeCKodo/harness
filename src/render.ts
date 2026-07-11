@@ -29,8 +29,9 @@ export function renderAgentsMd(m: Manifest): string {
 
   L.push("## Working agreement (read first)", "");
   L.push(
-    "This file and everything under `.agents/` are GENERATED from `.agents/manifest.yaml`. " +
-      "Do NOT edit them by hand — edit the manifest and run `harness-kit sync`.",
+    "`AGENTS.md`, `CLAUDE.md`, `.agents/routing.md`, and `.agents/modules.md` are GENERATED from `.agents/manifest.yaml`. " +
+      "Do NOT edit those files by hand — edit the manifest and run `harness-kit sync`. " +
+      "Knowledge is hand-authored; `.agents/hooks/` is managed by `harness-kit install-hooks`.",
     "",
   );
   L.push("Before you touch code:");
@@ -40,9 +41,17 @@ export function renderAgentsMd(m: Manifest): string {
   if (m.routing?.length)
     L.push("2. Find your change-type in `.agents/routing.md` and read the files it points to. Do NOT full-repo grep and guess.");
   else L.push("2. Read the relevant files before editing. Do NOT full-repo grep and guess.");
+  if ((m.modules ?? []).some((mod) => (mod.owns?.length ?? 0) > 0) || m.validation)
+    L.push("   If lifecycle hooks are not active, record the task-start commit before editing so committed work can later be checked with `run-checks --base <sha>`.");
   L.push("");
+  const hasImpactMap = (m.modules ?? []).some((mod) => (mod.owns?.length ?? 0) > 0) || !!m.validation;
   L.push("Before you finish:");
-  L.push("3. Run `harness-kit verify`. It enforces the invariants below and prints a **GAPS** list of what it cannot check.");
+  if (hasImpactMap)
+    L.push(
+      "3. Run `harness-kit run-checks` to verify THIS change (impact-driven) and `harness-kit verify` for drift/invariants. Treat blocking gaps as unfinished work — close them; only eligible coverage gaps may be waived with a scoped reason.",
+    );
+  else
+    L.push("3. Run `harness-kit verify`. It enforces the invariants below and prints a **GAPS** list of what it cannot check.");
   L.push(
     "4. **Never claim a check you didn't run.** If something is a GAP (packaging, real network, prod upload), say so — don't pretend it passed.",
   );
@@ -112,6 +121,7 @@ export function renderAgentsMd(m: Manifest): string {
   L.push("- Domain / conventions / decisions: `.agents/knowledge/`");
   if (m.routing?.length) L.push("- Change-type routing (read before editing): `.agents/routing.md`");
   if (m.modules?.length) L.push("- Module map + common pitfalls: `.agents/modules.md`");
+  if (hasImpactMap) L.push("- Implement -> verify loop (deep guide): run `harness-kit check-loop`");
   L.push("- Tooling adoption log (earn heavier tooling): `.agents/adoption.md`");
   if (m.playbooks?.dir) L.push(`- Task playbooks: \`.agents/${m.playbooks.dir}\``);
   L.push("");
@@ -143,6 +153,11 @@ export function renderModulesMd(m: Manifest): string {
   for (const mod of m.modules ?? []) {
     L.push(`## ${mod.name} — ${mod.role}`);
     if (mod.entry?.length) L.push(`- Entry: ${mod.entry.map((s) => `\`${safeStr(s)}\``).join(", ")}`);
+    if (mod.owns?.length) L.push(`- Owns (prod): ${mod.owns.map((s) => `\`${safeStr(s)}\``).join(", ")}`);
+    if (mod.tests?.length) L.push(`- Tests: ${mod.tests.map((s) => `\`${safeStr(s)}\``).join(", ")}`);
+    if (mod.checks?.length) L.push(`- Checks: ${mod.checks.map((s) => `\`${safeStr(s)}\``).join(", ")}`);
+    if (mod.test_touch) L.push(`- Test touch: \`${safeStr(mod.test_touch)}\``);
+    if (mod.playbook) L.push(`- Playbook: \`${safeStr(mod.playbook)}\``);
     if (mod.upstream?.length) L.push(`- Upstream: ${mod.upstream.map(safeStr).join(", ")}`);
     if (mod.downstream?.length) L.push(`- Downstream: ${mod.downstream.map(safeStr).join(", ")}`);
     if (mod.must_know?.length) for (const k of mod.must_know) L.push(`- Must know: ${safeStr(k)}`);

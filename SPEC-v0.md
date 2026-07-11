@@ -132,6 +132,28 @@ modules:
     downstream?: [string]
     must_know?:  [string]            # Agent 必须知道
     pitfalls?:   [string]            # 常见错误（最高价值的一栏）
+    # ── 影响面字段（给"实现 -> 验证"闭环用，见 §10）──
+    owns?:   [string]                # 本模块拥有的生产代码 glob（把 diff 映射到模块）
+    tests?:  [string]                # 覆盖本模块的测试文件 glob（判断改了代码有没有补测）
+    checks?: [string]                # 本模块变更时要跑的 capability 动词（run-checks 执行，不能是原始命令）
+    test_touch?: required | advisory | off
+                                      # 生产代码变化时，是否强制/提醒/不要求同步 touch tests
+    playbook?: string                # 指向 playbooks 下"如何验收本模块改动"的文档（可选）
+    remediation?: string             # 自定义 gap 修复提示（覆盖默认建议，可选）
+
+# ── 10. Validation：影响面驱动的 checkset / 兜底（可选，见 §10）──
+#   schema 只定义形状，不含域分类（不内置 "前端"/"HTTP" 等类型）。
+validation:
+  policies?:
+    test_touch_default?: required | advisory | off
+                                      # 未在 module 覆盖时默认 advisory；由 onboarding agent 提议、人 review
+  required_coverage?: [string]       # 命中这些 glob 的改动必须属于某个 owns/tests，否则 blocking
+  checksets?:                        # 命名可复用的 check 组，配合 run-checks --profile <id>
+    <id>: { checks: [string] }
+  defaults?:
+    no_match?: [string]              # 改动没命中任何 module.owns 时兜底跑的 checks
+    always?:   [string]             # 任何改动都追加的 checks
+  #  checksets/defaults 里的 check 同样只能引用已声明且非 background/mutating 的 capability 动词
 
 # ── 7. Playbooks：复用 SKILL.md（可选） ──────────────────────
 playbooks:
@@ -199,8 +221,46 @@ GAPS 不计入失败，但会打印数量（`verify: OK (N gap(s))`）。配套*
 | --- | --- |
 | `harness init` | 往当前 repo 注入 `.agents/` 骨架 + 交互式填 manifest 关键字段 |
 | `harness sync` | manifest → 生成各工具文件（幂等，带 DO-NOT-EDIT 头） |
-| `harness doctor` | 开发期体检：完整性 + 漂移 + 新鲜度 + 技术债 |
+| `harness doctor` | 开发期体检：完整性 + 漂移 + 新鲜度 + 技术债 + 影响面 owns 空匹配 / playbook 存在性 |
 | `harness verify` | CI 门禁：跑全部可执行 checks，任一失败即 fail |
 | `harness accept-contract [--id]` | 把当前契约指纹记为已接受基线（有意变更后显式跑，与 sync 分开） |
+| `harness install-hooks [--git] [--stop] [--agents ...]` | 装 git 钩子，和/或 Claude Code / Cursor / Codex 的 SessionStart + Stop 门禁 |
+| `harness plan-checks [--base] [--profile]` | 算影响面：把 diff 映射到模块、选出该跑的 checks、列出 gap；只算不跑（见 §10） |
+| `harness run-checks [--base] [--profile] [--waive <kind> --where <scope> --reason ...]` | 跑选中的 checks，持久化证据；失败或未解决的 blocking gap → 非零退出 |
+| `harness evidence [--session] [--json]` | 查看当前 worktree 最近一次（或指定 session）的验收证据 |
+| `harness check-loop` | 打印 harness-check-loop skill：给 agent 的"实现 -> 验证"闭环 |
+| `harness onboard` | 打印 erzhe-harness-init skill：引导 agent 给仓库接入 harness-kit |
 
 （未来：`harness map` 生成代码地图、`harness new-adr` 起草决策记录。）
+
+## 10. 实现 -> 验证闭环（v0.2）
+
+在"生成 + 门禁"之上，v0.2 提供一层**确定性弹药**，让 agent 在实现需求 / 修 bug 时能闭环验收。harness-kit **不判断功能对不对**（那是 agent + 测试的活），只做确定性的影响面计算和 capability 执行。
+
+**`plan-checks`（只算不跑）**：安全调用 Git（ref 永不拼进 shell），计算 committed + staged + unstaged + untracked 的完整改动。普通 `--base` 使用 merge-base；生命周期门禁使用 SessionStart 保存的 exact commit，因而不会漏掉会话内已 commit 的文件。若 `--repo` 指向 Git worktree 内的子 target，只保留该 target 下的 entries 并去掉路径前缀，模块 glob 与证据都保持 target-relative，兄弟 package 不会混入。Git 失败、base 无效、manifest 无效都 fail closed。随后按 `modules[].owns/tests` 映射模块，选出 `checks`（或 `--profile <checkset>`，再叠加 `validation.defaults`），并输出**诚实的 gap**：
+
+| gap kind | 含义 | 严重级 |
+| --- | --- | --- |
+| `no-impact-map` | manifest 没有任何声明 `owns` 的模块 | advisory |
+| `unmapped-file` | 改动文件不属于任何模块 `owns/tests` | advisory |
+| `unmapped-required-file` | `required_coverage` 范围内的改动未映射 | blocking |
+| `module-without-tests` | 命中模块没声明 `tests`（无回归网） | 由 test-touch policy 决定 |
+| `missing-test-touch` | 改了模块生产代码但一个测试都没碰 | 由 test-touch policy 决定 |
+| `no-checks-selected` | 有改动但没解析出任何 check | blocking |
+| `manifest-invalid` / `diff-unavailable` | 无法产生可信计划 | blocking |
+| `selected-check-not-run` | 选中的 check 未执行（未知/有副作用/长驻） | blocking |
+| `manual-base-required` | 手动验收只看到干净工作区，无法覆盖已 commit 的任务 | blocking |
+
+跨模块依赖无法从静态 glob 推断，作为 `notes.propagation-note` 明示，不伪装成已覆盖。每个 gap 带 `suggestion`（下一步怎么补），可被 `modules[].remediation` 覆盖。测试文件本身也会映射模块并触发该模块 checks，但只有生产代码变化才触发 test-touch 判断；多层 Git 状态按 `index < worktree < untracked` 折叠到最终状态，测试删除不算有效 touch。
+
+**`run-checks`（跑 + 留证据）**：先校验 manifest，再执行选中的 capability。未知、`background`、`mutating` 不是“跳过也算过”，而是 `not-verified`。状态只有：`no-change`、`verified`、`verified-with-advisories`、`verified-with-waivers`、`not-verified`。没有 lifecycle session 时，隐式 HEAD 得到的 `no-change` 不足以证明已 commit 的任务，命令会报 `manual-base-required`；手动工作流应在任务开始时记录 SHA，并传 `--base <task-start-sha>`。结果按 worktree/target/session 写入 Git admin dir 下的 `harness-kit/validation/`（文件权限 0600，保留 7 天、最多 100 条），`evidence` 可读取；同一 Git worktree 里的多个 harness target 不共享 latest 指针。
+
+只有确属非目标的**覆盖类缺口**可用 `--waive <kind> --where <scope> --reason <why>` 豁免：`missing-test-touch`、`module-without-tests`、`unmapped-required-file`。`unknown-profile`、`no-checks-selected`、manifest/Git 失败、check 未执行等系统与执行问题不可豁免。豁免绑定“当前改动指纹 + kind + scope”，代码一变自动失效；空理由、不匹配或歧义 scope 都失败。改动指纹包含 exact base、排序后的 layer/status/path、当前内容与 Git 可执行位；submodule 还包含当前 commit 与脏状态。
+
+**执行保证（SessionStart + Stop）**：`install-hooks --stop` 同时安装两个时刻。SessionStart 记录 exact HEAD；每一次 Stop（包括 `stop_hook_active`）都重跑 `run-checks` + `verify`。Claude Code / Codex 输出 JSON `{"decision":"block","reason":"..."}`；Cursor 输出 JSON `followup_message`。Cursor 的 aborted/error 停止不阻断。共享 runner 固定到安装时的 harness-kit 版本（本地开发可用 `HARNESS_KIT_CMD` 覆盖），避免 `latest` 在同一任务中漂移。
+
+安装成功不等于客户端一定执行：首个真实会话后必须跑 `evidence`。当前 Codex CLI 对 linked worktree 的项目级 hooks 存在已知兼容缺口，installer 会告警；Cursor 的部分 headless/cloud surface 也可能不触发生命周期 hooks。没有 evidence 就只能报告 GAP，不能声称门禁已生效。
+
+`evidence` 每次读取都会从原 resolved base 重算当前指纹；代码变化后旧记录立即变 `stale` 并非零退出。手动 `run-checks` 后只有 `runChecksValid`，独立 `verify` 会在指纹仍匹配时把结果写回；整体 `valid` 必须两道门都通过。证据状态保留 7 天，超过期限不再作为有效 hook 证据；JSON 的 `hookActive` 只表示这条期限内的证据来自生命周期 hook 且 `run-checks + verify` 都通过，不表示持续探测客户端安装状态。若 SessionStart 时工作区已经 dirty，安全边界是“从该 HEAD 到最终工作树的全部改动”（包含既有 dirty 的 superset），不是精确的任务归因；`evidence` 会展示 `initialDirty`。自动 checks 共享 7 分钟总预算，`verify` 的 repo 命令再共享 2 分钟预算，给 10 分钟客户端 hook 留出协议回传时间；超预算必须失败并主动返回 blocking 协议。
+
+**Goal 4（Harness Loop）**：仓库接入后持续迭代不足，复用既有闭环——`doctor` 报 owns 空匹配 / playbook 缺失 / 漂移 / 新鲜度，agent 自愈、人只 review（见 erzhe-harness-init skill 第 5 节），不新增命令。

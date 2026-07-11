@@ -11,18 +11,29 @@ export interface Capture {
   ok: boolean;
   stdout: string;
   error?: string;
+  timedOut?: boolean;
 }
+
+export const DEFAULT_COMMAND_TIMEOUT_MS = 2 * 60 * 1000;
 
 /**
  * Run a repo-provided command and capture stdout. The CLI stays protocol-agnostic:
  * it never parses the output, it only compares it against a stored baseline.
  */
-export function runCapture(repo: string, cmd: string): Capture {
+export function runCapture(repo: string, cmd: string, timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS): Capture {
+  if (timeoutMs <= 0) return { ok: false, stdout: "", error: "verification command budget exhausted", timedOut: true };
   try {
-    const stdout = execSync(cmd, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    const stdout = execSync(cmd, {
+      cwd: repo,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: Math.max(1, timeoutMs),
+      killSignal: "SIGTERM",
+    });
     return { ok: true, stdout };
   } catch (e) {
-    return { ok: false, stdout: "", error: (e as Error).message };
+    const error = e as Error & { code?: string };
+    return { ok: false, stdout: "", error: error.message, timedOut: error.code === "ETIMEDOUT" };
   }
 }
 

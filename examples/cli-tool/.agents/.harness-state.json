@@ -1,3 +1,10 @@
 {
-  "bindings": {}
+  "bindings": {
+    "module:commands": {
+      "src/commands/index.ts": "7fbdbe6ade37c555bc71dafcc9166b8cf19f170b2e0457bdada9940b265bc638"
+    },
+    "module:orchestrator": {
+      "src/orchestrator.ts": "c60adf44cb9d3f49c7c800598b0b8acdabeb0a3a3d9d952079d7054ab2ed72f6"
+    }
+  }
 }

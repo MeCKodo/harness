@@ -4,8 +4,8 @@ identity:
   name: ai-harness
   summary: AI-friendly repo harness CLI —— 把工程知识变成 agent 可消费的 manifest，生成各工具文件并用门禁保证一致
   scope_in:
-    - CLI 命令 init / sync / doctor / verify / accept-contract / install-hooks / onboard（src/）
-    - manifest schema + 生成器 + 声明式不变量执行 + 派生新鲜度
+    - CLI 命令 init / sync / doctor / verify / accept-contract / install-hooks / onboard / plan-checks / run-checks / evidence / check-loop（src/）
+    - manifest schema + 生成器 + 声明式不变量执行 + 派生新鲜度 + 影响面 planner
   scope_out:
     - 目标仓库自身的业务代码（本工具只读它们的 .agents/manifest.yaml）
     - spec-driven 工作流引擎（Spec Kit / Kiro 的活，可骑在我们之上）
@@ -22,14 +22,14 @@ capabilities:
 contracts:
   - id: cli-interface
     kind: cli-interface
-    desc: init/sync/doctor/verify/accept-contract/install-hooks/onboard 命令 + flags；改动即影响所有使用者
+    desc: 所有公开命令及各自 flags；改动即影响所有使用者
     breaking_needs: minor
-    snapshot: "pnpm exec tsx src/cli.ts --help"
+    snapshot: "node scripts/cli-interface-snapshot.mjs"
   - id: manifest-schema
     kind: other
     desc: .agents/manifest.yaml 的 schema（见 SPEC-v0.md）；删字段/改语义会破坏已初始化的仓
     breaking_needs: major
-    manual_verify: 对 examples/ 下三个样板跑 doctor，确认仍 healthy
+    check: "node --import tsx --test test/manifest.test.ts test/examples.test.ts"
 
 invariants:
   - id: no-raw-console-in-commands
@@ -59,7 +59,7 @@ routing:
     read: ["src/manifest.ts", "SPEC-v0.md"]
     entry: ["src/manifest.ts"]
     dont_assume:
-      - schema 改动要同步 SPEC-v0.md + examples/ 三个样板，否则 doctor 漂移
+      - schema 改动要同步 SPEC-v0.md + examples/ 四个样板，否则 doctor 漂移
     verify: ["typecheck"]
   - when: 改生成模板
     read: ["src/render.ts"]
@@ -78,11 +78,27 @@ modules:
   - name: cli
     role: 命令入口与分发（commander）
     entry: ["src/cli.ts"]
+    owns: ["src/cli.ts", "scripts/cli-interface-snapshot.mjs"]
+    tests: ["test/cli.test.ts"]
+    checks: ["test", "typecheck"]
+    test_touch: required
     pitfalls:
       - 新命令记得用 guard() 包裹，统一错误退出码
+      - 公开命令或 flag 改动要更新完整 help snapshot，不能只看顶层 --help
+  - name: manifest
+    role: manifest schema + 加载 + 校验
+    entry: ["src/manifest.ts"]
+    owns: ["src/manifest.ts", "SPEC-v0.md", ".agents/manifest.yaml", "examples/*/.agents/manifest.yaml"]
+    tests: ["test/manifest.test.ts"]
+    checks: ["test", "typecheck"]
+    test_touch: required
   - name: render
     role: manifest -> 各工具文件的生成器
     entry: ["src/render.ts"]
+    owns: ["src/render.ts"]
+    tests: ["test/render.test.ts"]
+    checks: ["test", "typecheck"]
+    test_touch: required
     must_know:
       - routing/modules 只在声明时才生成对应 .agents/*.md
     pitfalls:
@@ -90,8 +106,100 @@ modules:
   - name: enforce
     role: 声明式不变量执行（确定性，无 LLM）
     entry: ["src/enforce.ts"]
+    owns: ["src/enforce.ts"]
+    tests: ["test/enforce.test.ts"]
+    checks: ["test", "typecheck"]
     pitfalls:
       - path_glob 是 include-only；想排除文件只能靠缩小 glob 范围
+  - name: planner
+    role: 纯函数影响面 planner（diff -> checks + gaps，无 IO）
+    entry: ["src/planner.ts"]
+    owns: ["src/planner.ts"]
+    tests: ["test/planner.test.ts"]
+    checks: ["test", "typecheck"]
+    test_touch: required
+    pitfalls:
+      - 保持纯函数：不碰 git / fs / 进程，只做 glob 匹配，方便单测
+  - name: git-diff
+    role: 安全收集 committed / staged / unstaged / untracked 改动并生成指纹
+    entry: ["src/git.ts"]
+    owns: ["src/git.ts"]
+    tests: ["test/git.test.ts"]
+    checks: ["test", "typecheck"]
+    test_touch: required
+    pitfalls:
+      - Git ref 必须用参数数组传给 git，禁止拼进 shell
+      - SessionStart 基线必须用 exact diff，不能用 merge-base 吞掉会话内 commit
+      - nested --repo 必须只返回 target 内且 target-relative 的路径，不能混入兄弟 package
+      - fingerprint 必须覆盖 Git 可执行位，以及 submodule 当前 commit/脏状态，不能只 hash 普通文件内容
+  - name: validation-runner
+    role: plan-checks / run-checks / evidence 与持久化验收状态
+    entry: ["src/commands/run-checks.ts"]
+    owns: ["src/commands/plan-checks.ts", "src/commands/run-checks.ts", "src/commands/evidence.ts", "src/validation-state.ts"]
+    tests: ["test/run-checks.test.ts", "test/validation-state.test.ts"]
+    checks: ["test", "typecheck"]
+    test_touch: required
+    pitfalls:
+      - run-checks 只执行可终止、无副作用的 capability；unknown/background/mutating 都必须 fail closed
+      - waiver 只允许覆盖类 gap，且仅对同一 change fingerprint + gap kind + scope 生效，理由不能为空
+      - evidence 读取时必须重算 fingerprint；代码变化后的旧绿灯必须 stale + 非零退出
+      - 手动 evidence 的整体 valid 也要求同指纹 verifyPassed，run-checks 单独通过只算 runChecksValid
+      - 无 lifecycle session 时，隐式 HEAD 的 no-change 不能证明已 commit 的任务；手动验收必须传 task-start base
+  - name: agent-hooks
+    role: Claude Code / Cursor / Codex 的 SessionStart + Stop 生命周期门禁
+    entry: ["src/commands/hook-event.ts"]
+    owns: ["src/commands/install-hooks.ts", "src/commands/stop-hooks.ts", "src/commands/hook-event.ts"]
+    tests: ["test/install-hooks.test.ts", "test/hook-event.test.ts"]
+    checks: ["test", "typecheck"]
+    test_touch: required
+    pitfalls:
+      - Claude/Codex 用 stdout JSON decision=block；Cursor 用 stdout JSON followup_message
+      - stop_hook_active 不是跳过验证的理由，每次结束尝试都重新检查
+      - run-checks 7 分钟 + verify 2 分钟必须小于客户端 10 分钟 hook 上限，超时要来得及返回 blocking 协议
+      - Codex linked worktree 的项目 hook 受客户端已知缺陷影响，首个会话后必须用 evidence 确认实际触发
+  - name: core-gates
+    role: init/sync/doctor/verify/contract/enforcement 的通用基础
+    entry: ["src/commands/verify.ts"]
+    owns:
+      - "src/commands/{accept,doctor,init,sync,verify}.ts"
+      - "src/{contracts,state,util}.ts"
+    tests: ["test/contracts.test.ts", "test/state.test.ts", "test/examples.test.ts"]
+    checks: ["test", "typecheck"]
+  - name: bundled-skills
+    role: onboard / check-loop 技能的定位、输出与维护
+    entry: ["src/skill.ts"]
+    owns: ["src/skill.ts", "src/commands/{onboard,check-loop}.ts", "skills/**"]
+    tests: ["test/onboard.test.ts"]
+    checks: ["test", "typecheck"]
+  - name: examples
+    role: 四种接入形态的可读、doctor-healthy 回归样板
+    entry: ["test/examples.test.ts"]
+    owns: ["examples/**"]
+    tests: ["test/examples.test.ts"]
+    checks: ["test", "typecheck"]
+    test_touch: required
+  - name: repository-assets
+    role: 包元数据、生成状态、项目文档与本仓维护配置
+    entry: ["package.json"]
+    owns:
+      - ".agents/**"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "README.md"
+      - ".gitignore"
+      - "package.json"
+      - "pnpm-lock.yaml"
+    tests: ["test/**"]
+    checks: ["test", "typecheck"]
+    pitfalls:
+      - package 声明 Node >=18，runtime 依赖不得偷偷抬高版本下限；发布包要用真实 Node 18 跑 CLI smoke
+
+validation:
+  policies:
+    test_touch_default: advisory
+  required_coverage: ["src/**"]
+  defaults:
+    no_match: ["typecheck"]
 
 playbooks:
   dir: playbooks/

@@ -1,23 +1,66 @@
 import { execSync } from "node:child_process";
 import { join } from "node:path";
-import { readBaseline, runCapture } from "../contracts";
+import { DEFAULT_COMMAND_TIMEOUT_MS, readBaseline, runCapture } from "../contracts";
 import { runEnforcement } from "../enforce";
-import { loadManifest } from "../manifest";
+import { loadManifest, validateManifest } from "../manifest";
 import { renderTargets } from "../render";
+import { markManualVerifyResult } from "../validation-state";
 import { err, info, ok, readText, warn } from "../util";
 
-function runCheck(repo: string, cmd: string): boolean {
+interface VerifyOpts {
+  budgetMs?: number;
+  recordManualEvidence?: boolean;
+}
+
+interface CheckResult {
+  ok: boolean;
+  timedOut: boolean;
+}
+
+function runCheck(repo: string, cmd: string, timeoutMs: number): CheckResult {
+  if (timeoutMs <= 0) return { ok: false, timedOut: true };
   try {
-    execSync(cmd, { cwd: repo, stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
+    execSync(cmd, { cwd: repo, stdio: "ignore", timeout: Math.max(1, timeoutMs), killSignal: "SIGTERM" });
+    return { ok: true, timedOut: false };
+  } catch (error) {
+    return { ok: false, timedOut: (error as { code?: string }).code === "ETIMEDOUT" };
   }
 }
 
-export function verifyCmd(repo: string): number {
+export function verifyCmd(repo: string, opts: VerifyOpts = {}): number {
   const m = loadManifest(repo);
   let failures = 0;
+  const finish = (code: number): number => {
+    if (opts.recordManualEvidence === false) return code;
+    try {
+      const marked = markManualVerifyResult(repo, code === 0);
+      if (marked === "stale") warn("manual run-checks evidence no longer matches this change; rerun run-checks before relying on evidence");
+      return code;
+    } catch (error) {
+      err(`cannot persist manual verify evidence: ${(error as Error).message}`);
+      return 1;
+    }
+  };
+  const deadline = Date.now() + Math.max(1, opts.budgetMs ?? DEFAULT_COMMAND_TIMEOUT_MS);
+  const remainingMs = () => deadline - Date.now();
+  let budgetFailureReported = false;
+  const withinBudget = (where: string): boolean => {
+    if (remainingMs() > 0) return true;
+    if (!budgetFailureReported) {
+      failures++;
+      budgetFailureReported = true;
+      err(`verification budget exhausted ${where}`);
+    }
+    return false;
+  };
+
+  const manifestErrors = validateManifest(m).filter((issue) => issue.level === "error");
+  if (manifestErrors.length) {
+    info("0) Manifest validation");
+    for (const issue of manifestErrors) err(issue.msg);
+    info(`\nverify: FAILED (${manifestErrors.length} manifest problem(s))`);
+    return finish(1);
+  }
 
   info("1) Generated files in sync");
   for (const [rel, content] of renderTargets(m)) {
@@ -36,22 +79,25 @@ export function verifyCmd(repo: string): number {
 
   info("\n2) Invariants");
   for (const inv of m.invariants ?? []) {
+    if (!withinBudget(`before invariant ${inv.id}`)) break;
     if (inv.manual) {
       gaps.push(`invariant ${inv.id}: manual, not machine-enforced — ${inv.rule}`);
       continue;
     }
     if (inv.enforcement) {
       const v = runEnforcement(repo, inv.id, inv.enforcement);
+      if (!withinBudget(`while enforcing invariant ${inv.id}`)) break;
       if (v.length) {
         failures++;
         err(`${inv.id}: ${v.length} violation(s)`);
         for (const x of v.slice(0, 10)) info(`       ${x.file}:${x.line}  ${x.reason}  | ${x.snippet}`);
       } else ok(`${inv.id}`);
     } else if (inv.check) {
-      if (runCheck(repo, inv.check)) ok(`${inv.id} (check)`);
+      const result = runCheck(repo, inv.check, remainingMs());
+      if (result.ok) ok(`${inv.id} (check)`);
       else {
         failures++;
-        err(`${inv.id}: check failed (${inv.check})`);
+        err(`${inv.id}: check ${result.timedOut ? "timed out / verification budget exhausted" : "failed"} (${inv.check})`);
       }
     } else {
       gaps.push(`invariant ${inv.id}: no enforcement/check declared — ${inv.rule}`);
@@ -63,18 +109,20 @@ export function verifyCmd(repo: string): number {
   if (autochecked.length) {
     info("\n3) Contracts");
     for (const c of autochecked) {
+      if (!withinBudget(`before contract ${c.id}`)) break;
       if (c.check) {
-        if (runCheck(repo, c.check)) ok(`${c.id} (check)`);
+        const result = runCheck(repo, c.check, remainingMs());
+        if (result.ok) ok(`${c.id} (check)`);
         else {
           failures++;
-          err(`${c.id}: check failed (${c.check})`);
+          err(`${c.id}: check ${result.timedOut ? "timed out / verification budget exhausted" : "failed"} (${c.check})`);
         }
       }
       if (c.snapshot) {
-        const cap = runCapture(repo, c.snapshot);
+        const cap = runCapture(repo, c.snapshot, remainingMs());
         if (!cap.ok) {
           failures++;
-          err(`${c.id}: snapshot command failed (${c.snapshot})`);
+          err(`${c.id}: snapshot command ${cap.timedOut ? "timed out / verification budget exhausted" : "failed"} (${c.snapshot})`);
         } else {
           const base = readBaseline(repo, c.id);
           if (base === null) {
@@ -86,6 +134,7 @@ export function verifyCmd(repo: string): number {
           } else ok(`${c.id} (snapshot)`);
         }
       }
+      if (!withinBudget(`while checking contract ${c.id}`)) break;
     }
   }
   for (const c of contracts)
@@ -108,8 +157,8 @@ export function verifyCmd(repo: string): number {
   info("");
   if (failures) {
     info(`verify: FAILED (${failures} problem(s), ${gaps.length} gap(s))`);
-    return 1;
+    return finish(1);
   }
   info(`verify: OK (${gaps.length} gap(s) — see above)`);
-  return 0;
+  return finish(0);
 }

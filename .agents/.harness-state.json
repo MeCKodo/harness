@@ -1,17 +1,44 @@
 {
   "bindings": {
     "knowledge/domain.md": {
-      "src/cli.ts": "48a2e705692484508121aebaaf5245350f6997385a09eb53849e4239ed4bec1a",
-      "src/manifest.ts": "d86bd4abee4ee2e79633a0473855d90f2a4a97728011fb56c28fd407204f31ab"
+      "src/cli.ts": "dfce9d2ba67459c91c1d1c4a328ec719c7bd5f84937c3e0d9757fd7b4e8385f4",
+      "src/manifest.ts": "529036195eda5e9475c90712c95418b91724f549486ef3cf3481a9a65b9901f5"
     },
     "module:cli": {
-      "src/cli.ts": "48a2e705692484508121aebaaf5245350f6997385a09eb53849e4239ed4bec1a"
+      "src/cli.ts": "dfce9d2ba67459c91c1d1c4a328ec719c7bd5f84937c3e0d9757fd7b4e8385f4"
+    },
+    "module:manifest": {
+      "src/manifest.ts": "529036195eda5e9475c90712c95418b91724f549486ef3cf3481a9a65b9901f5"
     },
     "module:render": {
-      "src/render.ts": "bef9fe30b9204f8b4232227c0020c753508309ca7011777707c26b8d76c22b27"
+      "src/render.ts": "4a6010db1ed231edb67dc38a005f05ae6ba0cb8ccbcc4201e4835fee9a695e5b"
     },
     "module:enforce": {
       "src/enforce.ts": "732b599b0e5ee0a541d4a0ae81580a2c993ad261cf20196a3a8f4063882344b9"
+    },
+    "module:planner": {
+      "src/planner.ts": "c6d22e97521231e54562b0d140e5c5d36787286d8aa14f9cf8d2c45a4cb1e659"
+    },
+    "module:git-diff": {
+      "src/git.ts": "5c88d2dfbc8a8dab3358361f1c1fa1d176244ce256de93b89cd6b06406627dcb"
+    },
+    "module:validation-runner": {
+      "src/commands/run-checks.ts": "ff8b82ff0c6d37a06014dcf0287e22b25b325d08a58420f2e565a3d822b3e505"
+    },
+    "module:agent-hooks": {
+      "src/commands/hook-event.ts": "33eddd47a18f67d35c134d55745b6eb02cd279439f78a26636fc44245e36a209"
+    },
+    "module:core-gates": {
+      "src/commands/verify.ts": "6967dae722feb22d87f70bf526e011b0309fbda3ac5f0706b0c72c8b6ae4734c"
+    },
+    "module:bundled-skills": {
+      "src/skill.ts": "dc508fdd4bcdffb675c168a1c5d86295b3c9b337f02ac375af7ab0d462aa9498"
+    },
+    "module:examples": {
+      "test/examples.test.ts": "dcd62b347d19a0c85f3834d7c866149abb9a8a0ab4865a5bdb3b1e48e91aa190"
+    },
+    "module:repository-assets": {
+      "package.json": "86efdd291cef0b9a546bc3103c094e46cb53dbc501cf043f405869280ca7dc8e"
     }
   }
 }

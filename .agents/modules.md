@@ -4,13 +4,100 @@
 
 ## cli — 命令入口与分发（commander）
 - Entry: `src/cli.ts`
+- Owns (prod): `src/cli.ts`, `scripts/cli-interface-snapshot.mjs`
+- Tests: `test/cli.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
 - Pitfall: 新命令记得用 guard() 包裹，统一错误退出码
+- Pitfall: 公开命令或 flag 改动要更新完整 help snapshot，不能只看顶层 --help
+
+## manifest — manifest schema + 加载 + 校验
+- Entry: `src/manifest.ts`
+- Owns (prod): `src/manifest.ts`, `SPEC-v0.md`, `.agents/manifest.yaml`, `examples/*/.agents/manifest.yaml`
+- Tests: `test/manifest.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
 
 ## render — manifest -> 各工具文件的生成器
 - Entry: `src/render.ts`
+- Owns (prod): `src/render.ts`
+- Tests: `test/render.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
 - Must know: routing/modules 只在声明时才生成对应 .agents/*.md
 - Pitfall: AGENTS.md 要保持精简，别把 routing/modules 全文塞进去
 
 ## enforce — 声明式不变量执行（确定性，无 LLM）
 - Entry: `src/enforce.ts`
+- Owns (prod): `src/enforce.ts`
+- Tests: `test/enforce.test.ts`
+- Checks: `test`, `typecheck`
 - Pitfall: path_glob 是 include-only；想排除文件只能靠缩小 glob 范围
+
+## planner — 纯函数影响面 planner（diff -> checks + gaps，无 IO）
+- Entry: `src/planner.ts`
+- Owns (prod): `src/planner.ts`
+- Tests: `test/planner.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+- Pitfall: 保持纯函数：不碰 git / fs / 进程，只做 glob 匹配，方便单测
+
+## git-diff — 安全收集 committed / staged / unstaged / untracked 改动并生成指纹
+- Entry: `src/git.ts`
+- Owns (prod): `src/git.ts`
+- Tests: `test/git.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+- Pitfall: Git ref 必须用参数数组传给 git，禁止拼进 shell
+- Pitfall: SessionStart 基线必须用 exact diff，不能用 merge-base 吞掉会话内 commit
+- Pitfall: nested --repo 必须只返回 target 内且 target-relative 的路径，不能混入兄弟 package
+- Pitfall: fingerprint 必须覆盖 Git 可执行位，以及 submodule 当前 commit/脏状态，不能只 hash 普通文件内容
+
+## validation-runner — plan-checks / run-checks / evidence 与持久化验收状态
+- Entry: `src/commands/run-checks.ts`
+- Owns (prod): `src/commands/plan-checks.ts`, `src/commands/run-checks.ts`, `src/commands/evidence.ts`, `src/validation-state.ts`
+- Tests: `test/run-checks.test.ts`, `test/validation-state.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+- Pitfall: run-checks 只执行可终止、无副作用的 capability；unknown/background/mutating 都必须 fail closed
+- Pitfall: waiver 只允许覆盖类 gap，且仅对同一 change fingerprint + gap kind + scope 生效，理由不能为空
+- Pitfall: evidence 读取时必须重算 fingerprint；代码变化后的旧绿灯必须 stale + 非零退出
+- Pitfall: 手动 evidence 的整体 valid 也要求同指纹 verifyPassed，run-checks 单独通过只算 runChecksValid
+- Pitfall: 无 lifecycle session 时，隐式 HEAD 的 no-change 不能证明已 commit 的任务；手动验收必须传 task-start base
+
+## agent-hooks — Claude Code / Cursor / Codex 的 SessionStart + Stop 生命周期门禁
+- Entry: `src/commands/hook-event.ts`
+- Owns (prod): `src/commands/install-hooks.ts`, `src/commands/stop-hooks.ts`, `src/commands/hook-event.ts`
+- Tests: `test/install-hooks.test.ts`, `test/hook-event.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+- Pitfall: Claude/Codex 用 stdout JSON decision=block；Cursor 用 stdout JSON followup_message
+- Pitfall: stop_hook_active 不是跳过验证的理由，每次结束尝试都重新检查
+- Pitfall: run-checks 7 分钟 + verify 2 分钟必须小于客户端 10 分钟 hook 上限，超时要来得及返回 blocking 协议
+- Pitfall: Codex linked worktree 的项目 hook 受客户端已知缺陷影响，首个会话后必须用 evidence 确认实际触发
+
+## core-gates — init/sync/doctor/verify/contract/enforcement 的通用基础
+- Entry: `src/commands/verify.ts`
+- Owns (prod): `src/commands/{accept,doctor,init,sync,verify}.ts`, `src/{contracts,state,util}.ts`
+- Tests: `test/contracts.test.ts`, `test/state.test.ts`, `test/examples.test.ts`
+- Checks: `test`, `typecheck`
+
+## bundled-skills — onboard / check-loop 技能的定位、输出与维护
+- Entry: `src/skill.ts`
+- Owns (prod): `src/skill.ts`, `src/commands/{onboard,check-loop}.ts`, `skills/**`
+- Tests: `test/onboard.test.ts`
+- Checks: `test`, `typecheck`
+
+## examples — 四种接入形态的可读、doctor-healthy 回归样板
+- Entry: `test/examples.test.ts`
+- Owns (prod): `examples/**`
+- Tests: `test/examples.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+
+## repository-assets — 包元数据、生成状态、项目文档与本仓维护配置
+- Entry: `package.json`
+- Owns (prod): `.agents/**`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`, `package.json`, `pnpm-lock.yaml`
+- Tests: `test/**`
+- Checks: `test`, `typecheck`
+- Pitfall: package 声明 Node >=18，runtime 依赖不得偷偷抬高版本下限；发布包要用真实 Node 18 跑 CLI smoke

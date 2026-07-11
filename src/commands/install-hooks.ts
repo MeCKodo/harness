@@ -2,8 +2,16 @@ import { execSync } from "node:child_process";
 import { chmodSync, existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { err, info, ok, warn, writeText } from "../util";
+import { ALL_AGENTS, AgentTool, installStopHooks } from "./stop-hooks";
 
 const MARK = "harness-kit-managed-hook";
+
+export interface InstallHooksOpts {
+  force?: boolean;
+  git?: boolean; // install git pre-commit/pre-push hooks
+  stop?: boolean; // install agent Stop hooks
+  agents?: AgentTool[]; // which agent tools to install Stop hooks for (default: all)
+}
 
 // Resolve the real hooks dir (handles worktrees / custom core.hooksPath).
 function hooksDir(repo: string): string {
@@ -44,7 +52,7 @@ exit 0
 `;
 }
 
-export function installHooksCmd(repo: string, force = false): number {
+function installGitHooks(repo: string, force: boolean): number {
   let dir: string;
   try {
     dir = hooksDir(repo);
@@ -72,9 +80,24 @@ export function installHooksCmd(repo: string, force = false): number {
     ok(`installed ${name}`);
   }
 
-  info(`\nHooks written to ${dir}`);
+  info(`\nGit hooks written to ${dir}`);
   info("pre-commit: regenerates agent files from the manifest and stages them.");
   info("pre-push:   runs `harness-kit verify` and blocks on drift (bypass: git push --no-verify).");
   info("override the CLI it calls with env HARNESS_KIT_CMD (e.g. for local dev).");
   return 0;
+}
+
+export function installHooksCmd(repo: string, opts: InstallHooksOpts = {}): number {
+  const force = opts.force ?? false;
+  // Default (no selector) preserves old behavior: install git hooks only.
+  const doGit = opts.git ?? !opts.stop;
+  const doStop = opts.stop ?? false;
+
+  let code = 0;
+  if (doGit) code = installGitHooks(repo, force) || code;
+  if (doStop) {
+    if (doGit) info("");
+    code = installStopHooks(repo, opts.agents?.length ? opts.agents : ALL_AGENTS, force) || code;
+  }
+  return code;
 }

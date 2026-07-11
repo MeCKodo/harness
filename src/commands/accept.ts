@@ -25,7 +25,7 @@ export function acceptContractCmd(repo: string, id?: string): number {
   for (const c of targets) {
     const cap = runCapture(repo, c.snapshot!);
     if (!cap.ok) {
-      err(`${c.id}: snapshot command failed (${c.snapshot})`);
+      err(`${c.id}: snapshot command ${cap.timedOut ? "timed out" : "failed"} (${c.snapshot})`);
       problems++;
       continue;
     }

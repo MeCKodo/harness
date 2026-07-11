@@ -21,6 +21,12 @@ test("runCapture reports failure (non-zero exit) instead of throwing", () => {
   assert.equal(cap.stdout, "");
 });
 
+test("runCapture times out a hung repository command", () => {
+  const cap = runCapture(tmp(), `node -e "setTimeout(() => {}, 5000)"`, 50);
+  assert.equal(cap.ok, false);
+  assert.equal(cap.timedOut, true);
+});
+
 test("baseline round-trips and reads null before it is written", () => {
   const repo = tmp();
   assert.equal(readBaseline(repo, "http-api"), null);

@@ -1,3 +1,7 @@
 {
-  "bindings": {}
+  "bindings": {
+    "module:public-api": {
+      "src/index.ts": "6f79bb4992ea4c941021114d39fffff2ccf269daae4ce1afca34851352c256ac"
+    }
+  }
 }

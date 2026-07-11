@@ -41,3 +41,39 @@ test("routing step in AGENTS.md adapts to whether routing exists", () => {
     /routing\.md/,
   );
 });
+
+test("modules.md renders the impact-map fields (owns/tests/checks/policy/playbook)", () => {
+  const targets = renderTargets({
+    ...base,
+    modules: [
+      {
+        name: "api",
+        role: "r",
+        entry: ["src/api/index.ts"],
+        owns: ["src/api/**"],
+        tests: ["test/api/**"],
+        checks: ["test"],
+        test_touch: "required",
+        playbook: "verify-api.md",
+      },
+    ],
+  });
+  const modulesMd = targets.find((t) => t[0] === ".agents/modules.md")![1];
+  assert.match(modulesMd, /Owns \(prod\):.*src\/api/);
+  assert.match(modulesMd, /Tests:.*test\/api/);
+  assert.match(modulesMd, /Checks:.*test/);
+  assert.match(modulesMd, /Test touch:.*required/);
+  assert.match(modulesMd, /Playbook:.*verify-api\.md/);
+});
+
+test("AGENTS.md points to run-checks + check-loop only when an impact map exists", () => {
+  const withoutMap = renderAgentsMd(base);
+  assert.doesNotMatch(withoutMap, /run-checks/);
+
+  const withMap = renderAgentsMd({
+    ...base,
+    modules: [{ name: "api", role: "r", entry: ["src/a.ts"], owns: ["src/api/**"], checks: ["test"] }],
+  });
+  assert.match(withMap, /run-checks/);
+  assert.match(withMap, /check-loop/);
+});

@@ -1,3 +1,7 @@
 {
-  "bindings": {}
+  "bindings": {
+    "module:core": {
+      "src/good.ts": "9a30ac96b5d5c1b67eca69e1e2cf0798817d9578c8d7d904a81a67b983b35cba"
+    }
+  }
 }
