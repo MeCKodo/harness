@@ -80,13 +80,13 @@ Keeping the project files preserves ordinary-checkout support and makes linked w
 
 The installer resolves `CODEX_HOME` from the environment, falling back to `~/.codex`, canonicalizes that directory, and manages:
 
-- `$CODEX_HOME/harness-kit/codex-linked-dispatch-v1.sh`
+- `$CODEX_HOME/harness-kit/codex-linked-dispatch-v1.cjs`
 - one exact SessionStart entry in `$CODEX_HOME/hooks.json`
 - one exact Stop entry in `$CODEX_HOME/hooks.json`
 
 The two Hook commands call the same versioned dispatcher with an explicit event. The command shape is stable across registered repositories, so Codex only needs to review it once. A future incompatible dispatcher protocol must use a new versioned filename and therefore earns a new trust review.
 
-The dispatcher reads the Hook JSON payload once and preserves it for the project runner. It obtains the current worktree root and Git admin directory with parameterized Git commands. If the current worktree has no Harness registration, it exits successfully without reading the manifest or running project commands.
+The dispatcher is a dependency-free Node 18 CommonJS program. It reads the Hook JSON payload once and preserves it for the project runner, performs cross-platform SHA-256 validation through `node:crypto`, and obtains the current worktree root and Git admin directory with argument-array Git calls. If the current worktree has no Harness registration, it exits successfully without reading the manifest or running project commands.
 
 ### Worktree registration
 
