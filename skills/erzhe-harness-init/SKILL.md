@@ -114,7 +114,7 @@ harness-kit verify
 harness-kit install-hooks --repo . --stop --agents codex --allow-user-dispatcher
 ```
 
-Codex fallback 会保留用户 Hook 源配置里的其他 Hook，只加入一对固定的 SessionStart/Stop 调度入口和一个版本化分发器；当前 worktree 的登记放在它自己的 Git admin dir。未登记的仓库会直接不执行，登记存在但 runner、权限、路径或 hash 不一致则阻断。安装器遇到未知 JSON 结构、同名外来分发器或并发编辑时必须拒绝，agent 不得用 `--force` 猜测合并。
+Codex fallback 会保留用户 Hook 源配置里的其他 Hook，只加入一对固定的 SessionStart/Stop 调度入口和一个版本化分发器；同时从项目 `.codex/hooks.json` 移除且只移除 Harness 自己的命令，第三方项目 Hook 原位保留。这样 linked worktree 始终只有用户分发器这一条 Harness 路径，不会因某个 Codex surface 又开始读取项目 Hook 而重复跑检查。当前 worktree 的登记放在它自己的 Git admin dir。未登记的仓库会直接不执行，登记存在但 runner、权限、路径或 hash 不一致则阻断。安装器遇到未知 JSON 结构、同名外来分发器或并发编辑时必须拒绝，agent 不得用 `--force` 猜测合并。
 
 在 Orca 管理的 Codex 终端里，当前 `$CODEX_HOME` 是生成态运行时，Orca 会从系统 `~/.codex` 合并用户 Hook。安装器会自动识别这种环境并把 Harness 入口写到 `~/.codex` 源配置；agent 不得直接补丁当前运行时 `hooks.json`、Orca 管理脚本或私有 trust hash。安装后必须创建一个全新的 Orca Agent 会话，让宿主正常镜像源配置，再验证 evidence。
 

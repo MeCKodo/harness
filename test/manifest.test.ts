@@ -19,7 +19,7 @@ test("the repository impact map keeps Codex linked hooks with their focused test
   assert.ok(module.tests?.includes("test/codex-linked-hooks.test.ts"));
   assert.ok(
     module.pitfalls?.some((pitfall) =>
-      /Orca.*CODEX_HOME.*生成态.*~\/.codex.*不能补丁运行时 hooks.*trust/.test(pitfall),
+      /Orca.*CODEX_HOME.*生成态.*~\/\.codex.*不能补丁运行时 hooks.*trust/.test(pitfall),
     ),
   );
 });

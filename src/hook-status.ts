@@ -1,7 +1,7 @@
-import { lstatSync } from "node:fs";
+import { existsSync, lstatSync } from "node:fs";
 import { join } from "node:path";
 import { inspectCodexLinkedHooks, isLinkedGitWorktree } from "./codex-linked-hooks";
-import { collectChanges, EMPTY_TREE_BASE } from "./git";
+import { collectChanges, EMPTY_TREE_BASE, gitAdminDir } from "./git";
 import { inspectManagedFiles } from "./managed-files";
 import { readLatestHookValidationSession } from "./validation-state";
 import { sha256 } from "./util";
@@ -23,6 +23,7 @@ export interface AgentHookStatus {
 
 const RUNNER_REL = ".agents/hooks/harness-agent-hook.sh";
 const COMMAND_MARK = "harness-agent-hook.sh";
+const CODEX_LINKED_REGISTRATION_REL = "harness-kit/codex-linked-dispatch-v1.json";
 
 interface SafeProjectText {
   exists: boolean;
@@ -84,6 +85,36 @@ function groupStyleConfigured(repo: string, rel: string, agent: "claude" | "code
   return start && stop;
 }
 
+function linkedCodexProjectHooksSuppressed(repo: string, issues: string[]): boolean {
+  const rel = ".codex/hooks.json";
+  const inspected = safeProjectText(repo, rel, issues);
+  if (!inspected.exists || inspected.content === null) {
+    issues.push(`Codex linked support file ${rel} is missing`);
+    return false;
+  }
+  const json = parsedJson(rel, inspected.content, issues);
+  if (!json) return false;
+  if (json.hooks !== undefined && (!json.hooks || typeof json.hooks !== "object" || Array.isArray(json.hooks))) {
+    issues.push(`Codex linked support file ${rel} has an unknown hooks shape`);
+    return false;
+  }
+  const hooks = json.hooks as Record<string, unknown> | undefined;
+  for (const [event, semanticEvent] of [
+    ["SessionStart", "session-start"],
+    ["Stop", "stop"],
+  ] as const) {
+    if (hooks?.[event] !== undefined && !Array.isArray(hooks[event])) {
+      issues.push(`Codex linked support file ${rel} hooks.${event} must be an array`);
+      return false;
+    }
+    if (groupEventConfigured(hooks?.[event], "codex", semanticEvent)) {
+      issues.push(`Codex linked worktree still has a project ${event} Harness hook; reinstall to prevent duplicate lifecycle runs`);
+      return false;
+    }
+  }
+  return true;
+}
+
 function cursorConfigured(repo: string, issues: string[]): boolean {
   const rel = ".cursor/hooks.json";
   const inspected = safeProjectText(repo, rel, issues);
@@ -116,7 +147,7 @@ function codexFeatureEnabled(repo: string, issues: string[]): boolean {
     if (inFeatures && /^\s*\[.+\]\s*(?:#.*)?$/.test(line)) break;
     if (inFeatures && /^\s*(?:hooks|codex_hooks)\s*=\s*true\s*(?:#.*)?$/.test(line)) enabled = true;
   }
-  if (!enabled) issues.push(`codex: ${rel} does not enable project hooks`);
+  if (!enabled) issues.push(`codex: ${rel} does not enable Codex hooks`);
   return enabled;
 }
 
@@ -141,6 +172,14 @@ function runnerReady(repo: string, issues: string[]): boolean {
   }
 }
 
+function codexLinkedRegistrationExists(repo: string): boolean {
+  try {
+    return existsSync(join(gitAdminDir(repo), CODEX_LINKED_REGISTRATION_REL));
+  } catch {
+    return false;
+  }
+}
+
 /** Bind ACTIVE evidence to the exact runner and project-local client files
  * that were present when SessionStart ran. Entire file bytes are intentional:
  * an override or neighboring hook edit must earn fresh lifecycle evidence. */
@@ -157,13 +196,14 @@ export function agentHookConfigurationFingerprint(repo: string, agent: AgentTool
     configured = cursorConfigured(repo, issues);
     rels.push(".cursor/hooks.json");
   } else {
-    const projectConfigured = groupStyleConfigured(repo, ".codex/hooks.json", "codex", issues) && codexFeatureEnabled(repo, issues);
-    if (projectConfigured && isLinkedGitWorktree(repo)) {
+    if (isLinkedGitWorktree(repo)) {
+      const projectSuppressed = linkedCodexProjectHooksSuppressed(repo, issues);
+      const featureEnabled = codexFeatureEnabled(repo, issues);
       const linked = inspectCodexLinkedHooks(repo);
-      configured = linked.configured;
+      configured = projectSuppressed && featureEnabled && linked.configured;
       linkedArtifacts = linked.artifacts;
     } else {
-      configured = projectConfigured;
+      configured = groupStyleConfigured(repo, ".codex/hooks.json", "codex", issues) && codexFeatureEnabled(repo, issues);
     }
     rels.push(".codex/hooks.json", ".codex/config.toml");
   }
@@ -189,13 +229,19 @@ export function inspectAgentHookStatus(repo: string): AgentHookStatus {
 
   if (groupStyleConfigured(repo, ".claude/settings.json", "claude", issues)) configuredAgents.push("claude");
   if (cursorConfigured(repo, issues)) configuredAgents.push("cursor");
-  const codexGroup = groupStyleConfigured(repo, ".codex/hooks.json", "codex", issues);
-  if (codexGroup && codexFeatureEnabled(repo, issues)) {
-    if (isLinkedGitWorktree(repo)) {
-      const linked = inspectCodexLinkedHooks(repo);
-      issues.push(...linked.issues);
-      if (linked.configured) configuredAgents.push("codex");
-    } else {
+  const linkedCodex = isLinkedGitWorktree(repo);
+  const projectCodexIssues: string[] = [];
+  const projectCodexConfigured = groupStyleConfigured(repo, ".codex/hooks.json", "codex", projectCodexIssues);
+  if (linkedCodex && (projectCodexConfigured || codexLinkedRegistrationExists(repo))) {
+    issues.push(...projectCodexIssues);
+    const projectSuppressed = linkedCodexProjectHooksSuppressed(repo, issues);
+    const featureEnabled = codexFeatureEnabled(repo, issues);
+    const linked = inspectCodexLinkedHooks(repo);
+    issues.push(...linked.issues);
+    if (projectSuppressed && featureEnabled && linked.configured) configuredAgents.push("codex");
+  } else if (!linkedCodex) {
+    issues.push(...projectCodexIssues);
+    if (projectCodexConfigured && codexFeatureEnabled(repo, issues)) {
       configuredAgents.push("codex");
     }
   }

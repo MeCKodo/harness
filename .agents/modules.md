@@ -76,6 +76,7 @@
 - Pitfall: stop_hook_active 不是跳过验证的理由，每次结束尝试都重新检查
 - Pitfall: run-checks 7 分钟 + verify 2 分钟必须小于客户端 10 分钟 hook 上限，超时要来得及返回 blocking 协议
 - Pitfall: Codex linked worktree 必须显式安装用户分发器 fallback；无登记 silent no-op，有登记但路径/权限/runner hash 不一致则 fail closed
+- Pitfall: linked worktree 只能有一条 Harness 生命周期路径；安装时移除自己的项目 Hook、保留第三方项目 Hook，状态发现双路径必须 DEGRADED
 - Pitfall: linked worktree 要比较 canonical git-dir 与 git-common-dir，不能把同样使用 .git 文件的 submodule 误判为 linked
 - Pitfall: Orca 的 CODEX_HOME 是生成态；用户分发器必须写入 ~/.codex 源配置并由新终端镜像，不能补丁运行时 hooks、Orca 管理脚本或 trust 状态
 - Pitfall: 原生 Git hooks 可能由 linked worktrees 共享；默认拒绝共享/custom/global/foreign hooks，不能用 --force 覆盖第三方 hook
@@ -94,6 +95,7 @@
 - Pitfall: 接管授权必须在同一次 preflight 上完成，不能先 inspect 再另一次 write 留 TOCTOU 缝隙
 - Pitfall: audit bundle/receipt 必须在仓外且内容寻址；apply 重新渲染核对，不能把候选当任意写入源
 - Pitfall: init 非 force 要先统一预检全部 scaffold；legacy 文件 mode 与 guidance 的原位字节/拓扑都必须进入审计绑定
+- Pitfall: guidance 普通文件必须走仓库范围的 O_NOFOLLOW + inode 绑定读取；不能 lstat 后直接按路径 read 留软链接替换窗口
 - Pitfall: declared/unverified 不能命名成 verified；本地 hash 没有外部身份信任根
 - Pitfall: sync 不得写 .agents/.harness-state.json；语义新鲜度只由 record-context-review 推进
 

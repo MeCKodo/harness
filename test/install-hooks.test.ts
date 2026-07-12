@@ -243,6 +243,10 @@ test("install-hooks continues worktree-local Stop hooks after shared Git hooks a
   assert.ok(existsSync(join(linked, ".claude", "settings.json")), "linked worktree agent config installed");
   assert.equal(existsSync(join(main, ".agents", "hooks", "harness-agent-hook.sh")), false, "main worktree untouched");
   assert.equal(existsSync(join(main, ".claude", "settings.json")), false, "main worktree config untouched");
+  const status = inspectAgentHookStatus(linked);
+  assert.equal(status.state, "configured");
+  assert.deepEqual(status.configuredAgents, ["claude"]);
+  assert.equal(status.issues.some((issue) => /Codex linked/.test(issue)), false);
 });
 
 test("Codex linked-worktree hooks refuse an ineffective project-only install", () => {
@@ -268,8 +272,14 @@ test("Codex linked-worktree hooks refuse an ineffective project-only install", (
   }
 });
 
-test("Codex linked-worktree fallback installs project files, user dispatcher, and activation last", () => {
+test("Codex linked-worktree fallback removes its project hooks and activates only the user dispatcher", () => {
   const main = freshRepo();
+  assert.equal(installHooksCmd(main, { stop: true, agents: ["codex"] }), 0);
+  const projectHooksPath = join(main, ".codex", "hooks.json");
+  const seededProjectHooks = JSON.parse(readFileSync(projectHooksPath, "utf8"));
+  seededProjectHooks.keep = "project";
+  seededProjectHooks.hooks.SessionStart.unshift({ _foreign: "project", hooks: [] });
+  writeFileSync(projectHooksPath, JSON.stringify(seededProjectHooks, null, 2) + "\n");
   const linked = addLinkedWorktree(main);
   const codexHome = mkdtempSync(join(tmpdir(), "hk-hooks-codex-home-"));
   writeFileSync(
@@ -289,6 +299,14 @@ test("Codex linked-worktree fallback installs project files, user dispatcher, an
     );
     assert.ok(existsSync(join(linked, ".agents", "hooks", "harness-agent-hook.sh")));
     assert.ok(existsSync(join(linked, ".codex", "hooks.json")));
+    const projectHooks = JSON.parse(readFileSync(join(linked, ".codex", "hooks.json"), "utf8"));
+    assert.equal(projectHooks.keep, "project");
+    assert.equal(projectHooks.hooks.SessionStart[0]._foreign, "project");
+    assert.equal(
+      JSON.stringify(projectHooks).includes("harness-agent-hook.sh"),
+      false,
+      "linked worktree must not run the project Hook in parallel with the user dispatcher",
+    );
     assert.ok(existsSync(join(codexHome, "harness-kit", "codex-linked-dispatch-v1.cjs")));
     assert.ok(
       existsSync(join(git(linked, ["rev-parse", "--absolute-git-dir"]), "harness-kit", "codex-linked-dispatch-v1.json")),
@@ -318,6 +336,17 @@ test("Codex linked-worktree ACTIVE binds the dispatcher but ignores unrelated us
     recordCurrentHookEvidence(linked, "codex");
     assert.equal(inspectAgentHookStatus(linked).state, "active");
     const bound = agentHookConfigurationFingerprint(linked, "codex");
+
+    const linkedProjectHooksPath = join(linked, ".codex", "hooks.json");
+    const suppressedProjectHooks = readFileSync(linkedProjectHooksPath, "utf8");
+    const ordinary = freshRepo();
+    assert.equal(installHooksCmd(ordinary, { stop: true, agents: ["codex"] }), 0);
+    writeFileSync(linkedProjectHooksPath, readFileSync(join(ordinary, ".codex", "hooks.json"), "utf8"));
+    const duplicate = inspectAgentHookStatus(linked);
+    assert.equal(duplicate.state, "degraded");
+    assert.ok(duplicate.issues.some((issue) => /duplicate lifecycle runs/.test(issue)));
+    writeFileSync(linkedProjectHooksPath, suppressedProjectHooks);
+    assert.equal(inspectAgentHookStatus(linked).state, "active");
 
     const userHooksPath = join(codexHome, "hooks.json");
     const userHooks = JSON.parse(readFileSync(userHooksPath, "utf8"));

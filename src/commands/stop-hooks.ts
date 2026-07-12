@@ -124,7 +124,12 @@ function withoutManagedGroupHooks(
   return result;
 }
 
-function renderGroupStyle(current: string | null, rel: string, tool: "claude" | "codex"): string {
+function renderGroupStyle(
+  current: string | null,
+  rel: string,
+  tool: "claude" | "codex",
+  installManaged = true,
+): string {
   const json = readJson(current);
   if (json == null) {
     throw new Error(`${tool}: ${rel} exists but is not valid JSON`);
@@ -139,10 +144,10 @@ function renderGroupStyle(current: string | null, rel: string, tool: "claude" | 
     if (hooks[event] !== undefined && !Array.isArray(hooks[event]))
       throw new Error(`${tool}: ${rel} hooks.${event} must be an array; refusing to replace an unknown existing shape`);
     const existing = Array.isArray(hooks[event]) ? (hooks[event] as unknown[]) : [];
-    hooks[event] = [
-      ...withoutManagedGroupHooks(existing, tool, semanticEvent),
-      { hooks: [{ type: "command", command, timeout: 600 }] },
-    ];
+    const foreign = withoutManagedGroupHooks(existing, tool, semanticEvent);
+    hooks[event] = installManaged
+      ? [...foreign, { hooks: [{ type: "command", command, timeout: 600 }] }]
+      : foreign;
   }
   json.hooks = hooks;
   return JSON.stringify(json, null, 2) + "\n";
@@ -199,7 +204,7 @@ function renderCodexConfig(current: string | null): string {
 
   if (featuresStart < 0) {
     if (lines.length && lines.at(-1) !== "") lines.push("");
-    lines.push("[features]", "# harness-kit: required for project lifecycle hooks", "hooks = true");
+    lines.push("[features]", "# harness-kit: required for Codex lifecycle hooks", "hooks = true");
   } else {
     const featureKeys: number[] = [];
     for (let index = featuresStart + 1; index < featuresEnd; index++) {
@@ -211,7 +216,7 @@ function renderCodexConfig(current: string | null): string {
       lines[first] = `${indent}hooks = true`;
       for (const duplicate of featureKeys.slice(1).reverse()) lines.splice(duplicate, 1);
     } else {
-      lines.splice(featuresStart + 1, 0, "# harness-kit: required for project lifecycle hooks", "hooks = true");
+      lines.splice(featuresStart + 1, 0, "# harness-kit: required for Codex lifecycle hooks", "hooks = true");
     }
   }
   return lines.join("\n") + "\n";
@@ -291,7 +296,7 @@ export function installStopHooks(
   const linkedCodex = agents.includes("codex") && isLinkedGitWorktree(repo);
   if (linkedCodex && !opts.allowUserDispatcher) {
     err(
-      "codex project hooks are ignored by current Codex CLI versions in linked worktrees; " +
+      "codex project hooks are not a reliable single lifecycle path in linked worktrees; " +
         "no Agent hook files changed. Retry with `harness-kit install-hooks --repo . --stop --agents codex --allow-user-dispatcher`",
     );
     return 1;
@@ -323,7 +328,10 @@ export function installStopHooks(
     if (agents.includes("cursor")) targets.push([".cursor/hooks.json", renderCursor(current.get(".cursor/hooks.json") ?? null)]);
     if (agents.includes("codex")) {
       targets.push([".codex/config.toml", renderCodexConfig(current.get(".codex/config.toml") ?? null)]);
-      targets.push([".codex/hooks.json", renderGroupStyle(current.get(".codex/hooks.json") ?? null, ".codex/hooks.json", "codex")]);
+      targets.push([
+        ".codex/hooks.json",
+        renderGroupStyle(current.get(".codex/hooks.json") ?? null, ".codex/hooks.json", "codex", !linkedCodex),
+      ]);
     }
   } catch (error) {
     err((error as Error).message + " — no Agent hook files changed");
@@ -350,7 +358,7 @@ export function installStopHooks(
     } catch (error) {
       err(
         `codex linked-worktree dispatcher not activated: ${(error as Error).message}; ` +
-          "project files may be present but no worktree registration was trusted — rerun install-hooks",
+          "project files may be present, but no new registration was activated; any prior registration remains fail-closed — rerun install-hooks",
       );
       return 1;
     }
@@ -361,10 +369,12 @@ export function installStopHooks(
   if (agents.includes("cursor")) ok("cursor: installed sessionStart + stop hooks -> .cursor/hooks.json");
   if (agents.includes("codex")) {
     ok("codex: enabled project hooks -> .codex/config.toml");
-    ok("codex: installed SessionStart + Stop hooks -> .codex/hooks.json");
     if (linkedPlan) {
+      ok("codex: removed project Harness hooks so the user dispatcher is the only lifecycle path -> .codex/hooks.json");
       ok(`codex: installed linked-worktree dispatcher source -> ${join(linkedPlan.codexHome, "harness-kit", "codex-linked-dispatch-v1.cjs")}`);
       ok(`codex: registered this worktree -> ${join(linkedPlan.gitDir, "harness-kit", "codex-linked-dispatch-v1.json")}`);
+    } else {
+      ok("codex: installed SessionStart + Stop hooks -> .codex/hooks.json");
     }
   }
 

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -374,6 +374,34 @@ test("candidate preparation fails closed for missing, binary, or external-symlin
       /cannot safely resolve referenced guidance|guidance symlink.*safe in-repo/i,
     );
   }
+});
+
+test("candidate preparation refuses a guidance file swapped to a symlink after lstat", () => {
+  const repo = mkdtempSync(join(tmpdir(), "hk-adoption-guidance-race-repo-"));
+  const external = mkdtempSync(join(tmpdir(), "hk-adoption-guidance-race-external-"));
+  mkdirSync(join(repo, "unusual"));
+  writeFileSync(join(repo, "AGENTS.md"), "Read [required guidance](unusual/guide.md).\n");
+  const guidance = join(repo, "unusual/guide.md");
+  writeFileSync(guidance, "safe repository guidance\n");
+  const outside = join(external, "outside.md");
+  writeFileSync(outside, "must never enter the audit bundle\n");
+  manifest(repo);
+  captureLegacyEntries(repo);
+
+  let swapped = false;
+  assert.throws(
+    () => prepareAdoptionCandidate(repo, join(external, "candidate"), {
+      afterGuidanceFileLstat: (path) => {
+        if (path !== "unusual/guide.md" || swapped) return;
+        unlinkSync(guidance);
+        symlinkSync(outside, guidance);
+        swapped = true;
+      },
+    }),
+    /guidance.*(?:symlink|changed)|without following links/i,
+  );
+  assert.equal(swapped, true, "the test must replace the file inside the lstat/open window");
+  assert.equal(existsSync(join(external, "candidate")), false);
 });
 
 test("guidance discovery ignores Markdown images and ordinary code or asset links", () => {

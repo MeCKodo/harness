@@ -171,7 +171,12 @@ interface NoFollowFile {
   ino: number;
 }
 
-function readOptionalRepositoryFile(repoRoot: string, relativePath: string, label: string): NoFollowFile | null {
+function readOptionalRepositoryFile(
+  repoRoot: string,
+  relativePath: string,
+  label: string,
+  afterLstat?: (relativePath: string) => void,
+): NoFollowFile | null {
   const normalized = safeRelativePath(relativePath, label);
   const absolute = resolve(repoRoot, normalized);
   if (!inside(repoRoot, absolute) || absolute === repoRoot) throw new Error(`${label} path escapes the repository`);
@@ -184,6 +189,7 @@ function readOptionalRepositoryFile(repoRoot: string, relativePath: string, labe
     throw new Error(`cannot inspect ${label}: ${errorMessage(error)}`);
   }
   if (before.isSymbolicLink() || !before.isFile()) throw new Error(`${label} must be a regular file, not a symlink: ${relativePath}`);
+  afterLstat?.(normalized);
   let fd: number;
   try {
     fd = openSync(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -429,10 +435,23 @@ function textCanContainReferences(bytes: Buffer): boolean {
   return !bytes.includes(0);
 }
 
-function isLegacyEntry(path: string): boolean {
-  const stat = lstatSync(path);
+export interface AdoptionCandidateTestHooks {
+  /** Deterministic seam for replacing a guidance file between lstat and no-follow open. */
+  afterGuidanceFileLstat?: (relativePath: string) => void;
+}
+
+function isLegacyEntry(repoRoot: string, path: string, testHooks: AdoptionCandidateTestHooks): boolean {
+  const absolute = join(repoRoot, path);
+  const stat = lstatSync(absolute);
   if (stat.isSymbolicLink() || !stat.isFile()) return true;
-  return !readFileSync(path).toString("utf8").startsWith(GENERATED_MARKER);
+  const source = readOptionalRepositoryFile(
+    repoRoot,
+    path,
+    `guidance entry ${path}`,
+    testHooks.afterGuidanceFileLstat,
+  );
+  if (!source) throw new Error(`guidance entry disappeared while it was being inspected: ${path}`);
+  return !source.bytes.toString("utf8").startsWith(GENERATED_MARKER);
 }
 
 interface LiveGuidanceEvidence {
@@ -480,7 +499,12 @@ function explicitReferences(content: string): string[] {
   return [...references];
 }
 
-function resolveGuidanceReference(repoRoot: string, sourcePath: string, reference: string): string | null {
+function resolveGuidanceReference(
+  repoRoot: string,
+  sourcePath: string,
+  reference: string,
+  testHooks: AdoptionCandidateTestHooks,
+): string | null {
   const candidates = reference.startsWith("/")
     ? [resolve(repoRoot, reference.slice(1))]
     : [resolve(repoRoot, dirname(sourcePath), reference), resolve(repoRoot, reference)];
@@ -488,11 +512,20 @@ function resolveGuidanceReference(repoRoot: string, sourcePath: string, referenc
     if (!inside(repoRoot, absolute) || !entryExists(absolute)) continue;
     let stat;
     try {
-      const parent = realpathSync(dirname(absolute));
-      if (!inside(repoRoot, parent)) continue;
+      const path = relative(repoRoot, absolute);
+      if (!safeEvidencePath(path) || !ensureNoSymlinkDirectoryChain(repoRoot, dirname(absolute), `guidance ${path}`, false))
+        continue;
       stat = lstatSync(absolute);
-      if (!stat.isSymbolicLink() && (!stat.isFile() || !inside(repoRoot, realpathSync(absolute)))) continue;
-      if (stat.isFile() && !textCanContainReferences(readFileSync(absolute))) continue;
+      if (!stat.isSymbolicLink() && !stat.isFile()) continue;
+      if (stat.isFile()) {
+        const source = readOptionalRepositoryFile(
+          repoRoot,
+          path,
+          `guidance ${path}`,
+          testHooks.afterGuidanceFileLstat,
+        );
+        if (!source || !textCanContainReferences(source.bytes)) continue;
+      }
     } catch {
       continue;
     }
@@ -502,14 +535,29 @@ function resolveGuidanceReference(repoRoot: string, sourcePath: string, referenc
   return null;
 }
 
-function resolveGuidanceSymlinkTarget(repoRoot: string, sourcePath: string, linkTarget: string): string | null {
+function resolveGuidanceSymlinkTarget(
+  repoRoot: string,
+  sourcePath: string,
+  linkTarget: string,
+  testHooks: AdoptionCandidateTestHooks,
+): string | null {
   const absolute = isAbsolute(linkTarget) ? resolve(linkTarget) : resolve(repoRoot, dirname(sourcePath), linkTarget);
   if (!inside(repoRoot, absolute) || !entryExists(absolute)) return null;
   try {
-    if (!inside(repoRoot, realpathSync(dirname(absolute)))) return null;
+    const path = relative(repoRoot, absolute);
+    if (!safeEvidencePath(path) || !ensureNoSymlinkDirectoryChain(repoRoot, dirname(absolute), `guidance ${path}`, false))
+      return null;
     const stat = lstatSync(absolute);
-    if (!stat.isSymbolicLink() && (!stat.isFile() || !inside(repoRoot, realpathSync(absolute)))) return null;
-    if (stat.isFile() && !textCanContainReferences(readFileSync(absolute))) return null;
+    if (!stat.isSymbolicLink() && !stat.isFile()) return null;
+    if (stat.isFile()) {
+      const source = readOptionalRepositoryFile(
+        repoRoot,
+        path,
+        `guidance ${path}`,
+        testHooks.afterGuidanceFileLstat,
+      );
+      if (!source || !textCanContainReferences(source.bytes)) return null;
+    }
   } catch {
     return null;
   }
@@ -517,30 +565,47 @@ function resolveGuidanceSymlinkTarget(repoRoot: string, sourcePath: string, link
   return safeEvidencePath(path) ? path : null;
 }
 
-function liveGuidanceEvidence(repoRoot: string, path: string): LiveGuidanceEvidence {
+function liveGuidanceEvidence(
+  repoRoot: string,
+  path: string,
+  testHooks: AdoptionCandidateTestHooks,
+): LiveGuidanceEvidence {
   const absolute = join(repoRoot, path);
+  if (!ensureNoSymlinkDirectoryChain(repoRoot, dirname(absolute), `guidance ${path}`, false))
+    throw new Error(`guidance disappeared while it was being inspected: ${path}`);
   const stat = lstatSync(absolute);
   const mode = permissionMode(stat.mode);
-  if (stat.isSymbolicLink()) return { path, type: "symlink", mode, linkTarget: readlinkSync(absolute) };
+  if (stat.isSymbolicLink()) {
+    const linkTarget = readlinkSync(absolute);
+    if (!resolveGuidanceSymlinkTarget(repoRoot, path, linkTarget, testHooks))
+      throw new Error(`guidance symlink cannot be resolved to a safe in-repo text file: ${path}`);
+    return { path, type: "symlink", mode, linkTarget };
+  }
   if (!stat.isFile()) throw new Error(`guidance must be a regular file or symlink: ${path}`);
-  const bytes = readFileSync(absolute);
-  if (!textCanContainReferences(bytes)) throw new Error(`guidance must be plain text: ${path}`);
-  return { path, type: "file", mode, bytes };
+  const source = readOptionalRepositoryFile(
+    repoRoot,
+    path,
+    `guidance ${path}`,
+    testHooks.afterGuidanceFileLstat,
+  );
+  if (!source) throw new Error(`guidance disappeared while it was being inspected: ${path}`);
+  if (!textCanContainReferences(source.bytes)) throw new Error(`guidance must be plain text: ${path}`);
+  return { path, type: "file", mode: source.mode, bytes: source.bytes };
 }
 
-function discoverGuidance(repo: string): LiveGuidanceEvidence[] {
+function discoverGuidance(repo: string, testHooks: AdoptionCandidateTestHooks = {}): LiveGuidanceEvidence[] {
   const root = repositoryRoot(repo);
   const all = findAgentEntryPaths(root);
   const entryPaths = new Set<string>();
   for (const path of all) {
     if (!AGENT_ENTRY_NAMES.has(basename(path)) || !safeEvidencePath(path)) continue;
     const absolute = join(root, path);
-    if (entryExists(absolute) && isLegacyEntry(absolute)) entryPaths.add(path);
+    if (entryExists(absolute) && isLegacyEntry(root, path, testHooks)) entryPaths.add(path);
   }
   for (const path of MANAGED_ENTRY_PATHS) {
     if (!AGENT_ENTRY_NAMES.has(basename(path))) continue;
     const absolute = join(root, path);
-    if (entryExists(absolute) && isLegacyEntry(absolute)) entryPaths.add(path);
+    if (entryExists(absolute) && isLegacyEntry(root, path, testHooks)) entryPaths.add(path);
   }
 
   const evidence = new Set([...entryPaths].filter((path) => !MANAGED_ENTRY_PATHS.includes(path)));
@@ -552,9 +617,11 @@ function discoverGuidance(repo: string): LiveGuidanceEvidence[] {
     if (reviewed.has(sourcePath)) continue;
     reviewed.add(sourcePath);
     const absolute = join(root, sourcePath);
+    if (!ensureNoSymlinkDirectoryChain(root, dirname(absolute), `guidance ${sourcePath}`, false))
+      throw new Error(`guidance disappeared while it was being inspected: ${sourcePath}`);
     const stat = lstatSync(absolute);
     if (stat.isSymbolicLink()) {
-      const target = resolveGuidanceSymlinkTarget(root, sourcePath, readlinkSync(absolute));
+      const target = resolveGuidanceSymlinkTarget(root, sourcePath, readlinkSync(absolute), testHooks);
       if (!target) throw new Error(`guidance symlink cannot be resolved to a safe in-repo text file: ${sourcePath}`);
       if (!MANAGED_ENTRY_PATHS.includes(target)) evidence.add(target);
       if (!reviewed.has(target) && !queued.has(target)) {
@@ -564,10 +631,15 @@ function discoverGuidance(repo: string): LiveGuidanceEvidence[] {
       continue;
     }
     if (!stat.isFile()) continue;
-    const bytes = readFileSync(absolute);
-    if (!textCanContainReferences(bytes)) continue;
-    for (const reference of explicitReferences(bytes.toString("utf8"))) {
-      const target = resolveGuidanceReference(root, sourcePath, reference);
+    const source = readOptionalRepositoryFile(
+      root,
+      sourcePath,
+      `guidance ${sourcePath}`,
+      testHooks.afterGuidanceFileLstat,
+    );
+    if (!source || !textCanContainReferences(source.bytes)) continue;
+    for (const reference of explicitReferences(source.bytes.toString("utf8"))) {
+      const target = resolveGuidanceReference(root, sourcePath, reference, testHooks);
       if (!target) throw new Error(`cannot safely resolve referenced guidance ${reference} from ${sourcePath}`);
       if (!MANAGED_ENTRY_PATHS.includes(target)) evidence.add(target);
       if (!reviewed.has(target) && !queued.has(target)) {
@@ -576,7 +648,7 @@ function discoverGuidance(repo: string): LiveGuidanceEvidence[] {
       }
     }
   }
-  return [...evidence].sort().map((path) => liveGuidanceEvidence(root, path));
+  return [...evidence].sort().map((path) => liveGuidanceEvidence(root, path, testHooks));
 }
 
 export interface CaptureLegacyTestHooks {
@@ -953,7 +1025,11 @@ function readCandidateBundle(repoRoot: string, candidateDir: string): { root: st
  * Materialize a private, read-only-by-convention audit bundle outside the
  * repository. This never writes a managed target in the live repository.
  */
-export function prepareAdoptionCandidate(repo: string, outputDir: string): AdoptionCandidateMetadata {
+export function prepareAdoptionCandidate(
+  repo: string,
+  outputDir: string,
+  testHooks: AdoptionCandidateTestHooks = {},
+): AdoptionCandidateMetadata {
   const repoRoot = repositoryRoot(repo);
   const manifest = loadManifest(repoRoot);
   const errors = validateManifest(manifest).filter((issue) => issue.level === "error");
@@ -962,7 +1038,7 @@ export function prepareAdoptionCandidate(repo: string, outputDir: string): Adopt
   if (!index) throw new Error(`${INDEX_REL} is required before preparing an adoption candidate`);
   const invalidLegacy = index.entries.find((entry) => !verifyAdoptionEntry(repoRoot, entry));
   if (invalidLegacy) throw new Error(`legacy evidence is stale for ${invalidLegacy.path}; prepare refused`);
-  const liveGuidance = discoverGuidance(repoRoot);
+  const liveGuidance = discoverGuidance(repoRoot, testHooks);
 
   const root = prepareEmptyExternalDirectory(repoRoot, outputDir);
   const manifestBytes = readRegularFile(join(repoRoot, MANIFEST_REL), "manifest");

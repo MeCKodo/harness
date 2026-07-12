@@ -4,7 +4,7 @@
 
 **Goal:** Make Codex SessionStart/Stop lifecycle evidence work in standard Git linked worktrees while keeping onboarding Agent-driven and unregistered repositories inert.
 
-**Architecture:** Ordinary checkouts retain project `.codex` hooks. Linked worktrees add one versioned, user-level Node 18 dispatcher plus a private activation record in the worktree-specific Git admin directory; the record is written last and contains only canonical paths and hashes. Hook status binds evidence to the effective project/user/registration artifacts, while the bundled onboarding skill chooses the correct path automatically.
+**Architecture:** Ordinary checkouts retain project `.codex` hooks. Linked worktrees remove only Harness's project Hook commands, then use one versioned, user-level Node 18 dispatcher plus a private activation record in the worktree-specific Git admin directory; the record is written last and contains only canonical paths and hashes. Hook status rejects a project/user double path and binds evidence to the effective support/user/registration artifacts, while the bundled onboarding skill chooses the correct path automatically.
 
 **Tech Stack:** TypeScript 6, Node.js 18 CommonJS dispatcher, node:test + tsx, Commander, Git argument-array subprocesses, existing transactional managed-file writer.
 
@@ -15,6 +15,7 @@
 - Never modify Codex trust hashes, native global/shared Git hooks, consumer CI, or consumer business source.
 - Preserve foreign user Hook groups and refuse invalid JSON, symlinks, foreign dispatcher files, and concurrent edits.
 - A repository without a private linked-worktree registration must be a silent no-op.
+- A linked worktree must never keep both an exact Harness project Hook and the user dispatcher; foreign project Hooks remain untouched.
 - A present but invalid registration must fail closed: SessionStart exits non-zero; Stop emits Codex `decision=block` JSON.
 - Only a real fresh SessionStart + Stop evidence record may produce `ACTIVE`.
 - Node.js 18 remains the runtime floor and no dependency is added.
@@ -325,7 +326,7 @@
     : inspectProjectCodexHooks(repo, issues);
   ```
 
-  Require valid project `.codex` artifacts in both cases for forward compatibility, but for linked worktrees require the dispatcher and registration as the executable path.
+  Require valid project `.codex` support artifacts in both cases, but for linked worktrees require that exact Harness project commands are absent and the dispatcher plus registration are the sole executable path.
 
   In `agentHookConfigurationFingerprint()`, hash only the exact managed user Hook entries plus dispatcher/registration/project artifacts. Do not hash unrelated foreign user Hook groups.
 
@@ -386,7 +387,7 @@
 
   Add `src/codex-linked-hooks.ts` to the `agent-hooks` module ownership and record these durable pitfalls:
 
-  - Codex linked worktrees use the allowlisted user dispatcher until upstream project Hook discovery works.
+  - Codex linked worktrees use only the allowlisted user dispatcher; returning to a native project path requires an explicit future migration.
   - Missing registration is inert; invalid registration blocks.
   - User Hook trust is never written by Harness and evidence remains the activation proof.
 
@@ -482,7 +483,7 @@
 
 - [ ] **Step 5: Real plain linked-worktree lifecycle**
 
-  Create a standard `git worktree add` fixture, install with `--allow-user-dispatcher`, start a fresh Codex turn, and require the same ACTIVE evidence. Confirm the project-level Hook remains absent from Codex `/hooks` while the managed user dispatcher is present and active.
+  Create a standard `git worktree add` fixture, install with `--allow-user-dispatcher`, start a fresh Codex turn, and require the same ACTIVE evidence. Instrument the runner and prove exactly one SessionStart plus one Stop reach Harness; confirm `.codex/hooks.json` has no exact Harness project command while foreign project Hooks and the managed user dispatcher remain present.
 
 - [ ] **Step 6: Real Orca linked-worktree lifecycle**
 
