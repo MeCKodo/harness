@@ -102,15 +102,23 @@ harness-kit verify
 - 契约提示 baseline 未设置时，先确认当前接口符合 policy，再运行 `harness-kit accept-contract --repo .`；拿不准是否 breaking 就升级给用户，绝不静默 accept。
 - 迭代到 `doctor` healthy、`verify` 退出码 0，且 GAPS 只剩确实无法自动执行的覆盖。
 
-## 6. 自动安装项目级会话门禁并验证
+## 6. 自动安装有效的会话门禁并验证
 
-作为首次接入收尾、在宣称完成之前，由 agent 自动安装**项目本地** Agent SessionStart/Stop hooks：
+作为首次接入收尾、在宣称完成之前，由 agent 完成下面的判断和安装，**不让用户选择项目 Hook 或用户分发器等实现方式**：
+
+1. 只为当前真正使用的客户端安装 SessionStart/Stop hooks，并把 `claude`、`cursor` 或 `codex` 显式传给 `--agents`；不要因为 CLI 支持多个客户端就默认全装。
+2. 运行 `git rev-parse --absolute-git-dir` 和 `git rev-parse --path-format=absolute --git-common-dir`。两个规范化路径相同就是普通 worktree；不同才是真正的 linked worktree。不能只看根目录 `.git` 是否为文件，因为 submodule 也是这种外观。
+3. Claude Code、Cursor 和普通 worktree 里的 Codex 使用项目级安装，例如 `harness-kit install-hooks --repo . --stop --agents codex`。如果当前客户端是 Codex 且两个 Git 路径不同，直接使用安全 fallback：
 
 ```sh
-harness-kit install-hooks --repo . --stop
+harness-kit install-hooks --repo . --stop --agents codex --allow-user-dispatcher
 ```
 
-随后启动一个**全新的 Agent 会话**，完成一次安全的验证闭环，再运行 `harness-kit evidence`；只有 evidence 明确记录该新会话的 SessionStart 基线和 Stop 阶段 `run-checks + verify` 结果，才能宣称 hooks 已生效。客户端未执行项目 hooks 时要报 GAP，并用任务开始 SHA 手动跑 `run-checks --base <sha>`，不能把默认 `no-change` 当证据。
+Codex fallback 会保留 `$CODEX_HOME/hooks.json` 里的其他 Hook，只加入一对固定的 SessionStart/Stop 调度入口和一个版本化分发器；当前 worktree 的登记放在它自己的 Git admin dir。未登记的仓库会直接不执行，登记存在但 runner、权限、路径或 hash 不一致则阻断。安装器遇到未知 JSON 结构、同名外来分发器或并发编辑时必须拒绝，agent 不得用 `--force` 猜测合并。
+
+Codex 首次信任用户分发器时，agent 先用一句人话说明：“它不改业务代码，也不是共享 Git hook；只把已登记 worktree 的会话事件交回该仓库自己的门禁，其他仓库不执行。”宿主允许 agent 完成信任复核时自动完成；必须由 UI 确认时，只请用户批准安装器打印出的那一条精确 managed dispatcher，不抛给用户技术选型题。
+
+随后启动一个**全新的 Agent 会话**，完成一次安全的验证闭环，再运行 `harness-kit evidence --repo . --json`。宿主支持创建会话/Agent（例如 Orca）时由当前 agent 自动创建和检查；不支持时才请用户重开一次会话。只有 evidence 明确记录该新会话的 SessionStart 基线、Stop 阶段 `run-checks + verify` 结果并且 `hookActive: true`，才能宣称 hooks 已生效。客户端未执行 hooks 时要报 GAP，并用任务开始 SHA 手动跑 `run-checks --base <sha>`，不能把默认 `no-change` 当证据。
 
 原生 Git hooks（pre-commit / pre-push）是**可选且仅限确认安全时**的增强：不得覆盖既有 hooks，不得改变未知的团队工作流，也不能作为首次接入完成条件。**绝不要指示用户修改 CI。**
 

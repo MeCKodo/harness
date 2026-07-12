@@ -68,19 +68,21 @@
 
 ## agent-hooks — Claude Code / Cursor / Codex 的 SessionStart + Stop 生命周期门禁
 - Entry: `src/commands/hook-event.ts`
-- Owns (prod): `src/commands/install-hooks.ts`, `src/commands/stop-hooks.ts`, `src/commands/hook-event.ts`, `src/hook-status.ts`
-- Tests: `test/install-hooks.test.ts`, `test/hook-event.test.ts`
+- Owns (prod): `src/commands/install-hooks.ts`, `src/commands/stop-hooks.ts`, `src/commands/hook-event.ts`, `src/hook-status.ts`, `src/codex-linked-hooks.ts`
+- Tests: `test/install-hooks.test.ts`, `test/hook-event.test.ts`, `test/codex-linked-hooks.test.ts`
 - Checks: `test`, `typecheck`
 - Test touch: `required`
 - Pitfall: Claude/Codex 用 stdout JSON decision=block；Cursor 用 stdout JSON followup_message
 - Pitfall: stop_hook_active 不是跳过验证的理由，每次结束尝试都重新检查
 - Pitfall: run-checks 7 分钟 + verify 2 分钟必须小于客户端 10 分钟 hook 上限，超时要来得及返回 blocking 协议
-- Pitfall: Codex linked worktree 的项目 hook 受客户端已知缺陷影响，首个会话后必须用 evidence 确认实际触发
+- Pitfall: Codex linked worktree 必须显式安装用户分发器 fallback；无登记 silent no-op，有登记但路径/权限/runner hash 不一致则 fail closed
+- Pitfall: linked worktree 要比较 canonical git-dir 与 git-common-dir，不能把同样使用 .git 文件的 submodule 误判为 linked
 - Pitfall: 原生 Git hooks 可能由 linked worktrees 共享；默认拒绝共享/custom/global/foreign hooks，不能用 --force 覆盖第三方 hook
 - Pitfall: Agent hook runner 与客户端配置必须整组预检、事务写入；拒绝配置软链接和未知 hooks 结构，不能写到项目外或留半套配置
 - Pitfall: ACTIVE 只认安装器生成的精确 runner 与逐 agent/event 命令；marker 文本或不安全 HARNESS_KIT_CMD 前缀都不构成配置证据
 - Pitfall: ACTIVE evidence 必须绑定 SessionStart 时的 runner/client-config 指纹；合法 override 或配置变化后旧证据也只能 DEGRADED
 - Pitfall: Hook 配置渲染依据的旧字节必须绑定同一次事务 preflight；并发更新要失败并保留新内容
+- Pitfall: 用户分发器登记必须最后写入；ACTIVE 指纹只绑定 Harness managed 用户入口，不得被无关第三方用户 Hook 变化污染
 
 ## managed-generation — 生成文件接管、软链接边界与事务写入
 - Entry: `src/managed-files.ts`

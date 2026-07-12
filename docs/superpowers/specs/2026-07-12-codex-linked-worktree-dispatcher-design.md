@@ -49,7 +49,7 @@ This is the selected approach.
 
 The normal onboarding Agent remains the primary interface. It will:
 
-1. Detect whether `git rev-parse --git-dir` and `--git-common-dir` describe a linked worktree.
+1. Compare the canonical absolute `git-dir` and `git-common-dir`; only different paths describe a linked worktree. A `.git` pointer file alone is insufficient because submodules use one too.
 2. In an ordinary checkout, run the existing project-level Codex Hook installation.
 3. In a linked worktree, run:
 
@@ -184,7 +184,7 @@ The bundled onboarding skill must treat setup as an Agent-owned workflow:
 
 ### Focused automated tests
 
-- linked-worktree detection uses Git metadata and does not depend on Orca variables;
+- linked-worktree detection compares canonical Git admin/common directories, does not depend on Orca variables, and does not mistake a submodule for a linked worktree;
 - linked Codex install without the explicit flag fails without registration;
 - dispatcher installation preserves existing user Hook entries and is idempotent;
 - invalid JSON, symlink targets, foreign dispatcher files, and concurrent edits fail closed;

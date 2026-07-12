@@ -5,7 +5,7 @@
 >
 > 设计背景与调研见 `DESIGN.md`。本文件是规范正文。
 >
-> **v0.3 相比 v0.2**：补齐真实仓库验证暴露出的安全与可信度边界——严格 spec、事务生成、首次接管快照、原位置知识登记、显式 Agent 复核、结构化 verify、Hook 活性状态和 worktree-safe Git hooks。
+> **v0.3 相比 v0.2**：补齐真实仓库验证暴露出的安全与可信度边界——严格 spec、事务生成、首次接管快照、原位置知识登记、显式 Agent 复核、结构化 verify、Hook 活性状态、worktree-safe Git hooks，以及 Codex linked-worktree 的受限用户分发器 fallback。
 > manifest 标签仍是唯一受支持的 `ai-harness/v0`；任何未知标签（例如 `ai-harness/v999`）必须 fail closed，不能按“未来版本大概兼容”继续执行。
 >
 > v0.2 引入的 Task Brief、按改动类型路由（§8）、模块卡（§9）、验证缺口 GAPS（§5）、知识沉淀触发与 adoption 节奏继续保留。
@@ -200,7 +200,7 @@ generate:
 4. 生成物**无漂移**（re-render 到内存 vs 磁盘 diff）。
 5. 新鲜度：`knowledge.binds` 的源文件 hash 变了 → 报 drift；`invariants` 里 `manual:true` 的计入"待补门禁"技术债并给出数量。
 6. **AGENTS.md 体量预算**：生成的 `AGENTS.md` 超过 ~150 行 / ~700 词告警。渐进式披露——入口只指路，细节放 `.agents/` 按需加载，绝不让 Agent 读不完。
-7. **Agent Hook 状态**：`CONFIGURED` = runner + 至少一组项目 SessionStart/Stop 配置完整但尚无当前 Stop 证据；`ACTIVE` = 非手动 session 的当前 `run-checks + verify` evidence 有效，且 SessionStart 绑定的 runner/client-config 指纹仍与现场完全相同；`DEGRADED` = runner/config 缺失或改变（包括合法的本地 CLI override 改值），或 evidence 失败/stale。`evidence.hookActive` 使用同一配置绑定，不能让旧证据替另一版配置背书。状态是可见告警，不冒充 repo 代码门禁。
+7. **Agent Hook 状态**：`CONFIGURED` = 至少一个客户端的有效 SessionStart/Stop 路径完整但尚无当前 Stop 证据；普通 worktree 的有效路径是项目 runner + client config，Codex linked-worktree 还必须包含精确用户入口、版本化分发器和当前 worktree 私有登记。`ACTIVE` = 非手动 session 的当前 `run-checks + verify` evidence 有效，且 SessionStart 绑定的完整有效配置指纹仍与现场完全相同；`DEGRADED` = 任一组成缺失或改变（包括合法的本地 CLI override 改值），或 evidence 失败/stale。`evidence.hookActive` 使用同一配置绑定，不能让旧证据替另一版配置背书；无关的第三方用户 Hook 不进入该指纹。状态是可见告警，不冒充 repo 代码门禁。
 
 `harness-kit verify`（本地/CI 均可用的确定性门禁）= 所有 `invariants` 的 `enforcement`/`check` + `contracts` 的 `check`/`snapshot` + "生成物无漂移" + 显式 authority 的 context freshness。任一 blocking 项失败即 fail。`--json` 必须只向 stdout 输出一个 `ai-harness/verify-report/v1` 文档，包含 `ok/failures/manifestErrors/context/hooks/gaps/messages`；即使 matcher、contract baseline 或 hook 配置遇到异常，也只能返回这一个结构化失败文档。
 
@@ -247,7 +247,7 @@ GAPS 不计入失败，但会打印数量（`verify: OK (N gap(s))`）。配套*
 | `harness doctor` | 开发期体检：完整性 + 漂移 + 新鲜度 + 技术债 + 影响面 owns 空匹配 / playbook 存在性 |
 | `harness verify [--json]` | 本地/CI 门禁：跑全部可执行 checks，任一失败即 fail；JSON 为单文档稳定协议 |
 | `harness accept-contract [--id]` | 把当前契约指纹记为已接受基线（有意变更后显式跑，与 sync 分开） |
-| `harness install-hooks [--git] [--stop] [--agents ...] [--allow-shared-git-hooks]` | 装项目 Agent hooks；原生 Git hooks 默认只在单 worktree/default path/无第三方冲突时写入 |
+| `harness install-hooks [--git] [--stop] [--agents ...] [--allow-shared-git-hooks] [--allow-user-dispatcher]` | 装 Agent hooks；Codex linked-worktree 的用户分发器必须显式允许，原生 Git hooks 默认只在单 worktree/default path/无第三方冲突时写入 |
 | `harness plan-checks [--base] [--profile]` | 算影响面：把 diff 映射到模块、选出该跑的 checks、列出 gap；只算不跑（见 §10） |
 | `harness run-checks [--base] [--profile] [--waive <kind> --where <scope> --reason ...]` | 跑选中的 checks，持久化证据；失败或未解决的 blocking gap → 非零退出 |
 | `harness evidence [--session] [--json]` | 查看当前 worktree 最近一次（或指定 session）的验收证据 |
@@ -285,7 +285,9 @@ GAPS 不计入失败，但会打印数量（`verify: OK (N gap(s))`）。配套*
 
 项目级 Agent runner 与客户端配置必须整组预检和事务写入：最终路径和父路径都不得是 symlink 或解析到项目外，未知/损坏的 hooks JSON 结构不得被猜测替换，第三方 runner 即使带 `--force` 也不得覆盖。渲染配置所读取的旧字节必须在同一次写事务的 authorize preflight 中重新匹配；中间发生并发编辑就整组失败并保留较新的内容。合法第三方数组项原位保留，只更新与安装器生成的 runner、agent、event、fallback 完整匹配的 Harness 命令；仅出现 marker 文本、错误事件或含 shell expansion 的 `HARNESS_KIT_CMD` 前缀都不能被当成已安装。合法本地 override 也会改变配置指纹：必须由这版精确配置重新产生 SessionStart/Stop 证据，旧证据只能降级。任一客户端预检失败时，所选整组不写入。
 
-安装成功不等于客户端一定执行：首个真实会话后必须跑 `evidence`。当前 Codex CLI 对 linked worktree 的项目级 hooks 存在已知兼容缺口，installer 会告警；Cursor 的部分 headless/cloud surface 也可能不触发生命周期 hooks。没有 evidence 就只能报告 GAP，不能声称门禁已生效。
+Codex CLI 当前不读取 linked worktree 的项目级 Hook，因此 installer 默认拒绝这种“文件写了但不会生效”的安装。只有显式 `--agents codex --allow-user-dispatcher` 才能启用 fallback：项目事务成功后，installer 用绑定旧字节的 compare-and-swap 更新 `$CODEX_HOME/hooks.json` 的精确 SessionStart/Stop managed group 和版本化、兼容 Node 18 的无依赖分发器，再把不含命令的登记记录以 `0600` 写入当前 `git-dir`，登记必须最后写入。分发器只接受当前 worktree 的 canonical root/git-dir、项目内普通 manifest/runner、固定 runner relative path/hash/mode；无登记仓库 silent no-op，登记存在但任一检查失败则 SessionStart 非零、Stop 输出 block。已有用户 Hook 条目的语义内容与相对顺序必须保留；未知 JSON shape、同名外来分发器、软链接、路径越界或并发更新全部 fail closed。判断 linked worktree 必须比较 canonical `git-dir` 与 `git-common-dir`，不能把同样使用 `.git` 文件的 submodule 误判为 linked worktree。
+
+安装成功不等于客户端一定执行：首个真实会话后必须跑 `evidence --json` 并看到 `hookActive: true`。Cursor 的部分 headless/cloud surface 仍可能不触发生命周期 hooks；没有 evidence 就只能报告 GAP，不能声称门禁已生效。
 
 **原生 Git hooks 是可选增强，不是 Agent 闭环的前提**：安装前必须用参数化 `git` 调用检查 `git worktree list`、`--git-common-dir`、`--git-dir`、解析后的 hooks 目录，以及 `core.hooksPath` 的 scope/origin。多 worktree 默认拒绝；只有用户显式 `--allow-shared-git-hooks` 才可接受共享范围。custom/global/ambiguous `core.hooksPath` 永远拒绝自动写；已有第三方 `pre-commit`/`pre-push` 永远保留，`--force` 也只能刷新 Harness 自己有 marker 的 hook。组合安装时，Git hook 拒绝不能阻止 worktree-local Agent hooks 安装，但整体退出码必须诚实非零。CLI 不自动 merge 第三方 hook、不修改 CI。
 

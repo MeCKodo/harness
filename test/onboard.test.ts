@@ -80,7 +80,13 @@ test("onboard separates analysis from sync and installs only required Agent hook
   assert.match(out, /record-context-review --repo \. --module <module\.name> --reason/);
   assert.match(out, /绝不能替代分析/);
   assert.match(out, /`sync`.*只根据 manifest 重生成确定性文件/);
-  assert.match(out, /harness-kit install-hooks --repo \. --stop/);
+  assert.match(out, /git rev-parse --absolute-git-dir/);
+  assert.match(out, /git rev-parse --path-format=absolute --git-common-dir/);
+  assert.match(out, /不能只看.*\.git.*文件.*submodule/);
+  assert.match(out, /当前真正使用的客户端.*--agents/);
+  assert.match(out, /harness-kit install-hooks --repo \. --stop --agents codex --allow-user-dispatcher/);
+  assert.match(out, /未登记的仓库.*不执行/);
+  assert.match(out, /不让用户选择.*实现方式/);
   assert.match(out, /全新的 Agent 会话/);
   assert.match(out, /evidence.*SessionStart.*Stop.*run-checks \+ verify/);
   assert.match(out, /原生 Git hooks.*可选且仅限确认安全/);
@@ -88,7 +94,9 @@ test("onboard separates analysis from sync and installs only required Agent hook
   const installHookCommands = out
     .split("\n")
     .filter((line) => /^harness-kit install-hooks\b/.test(line));
-  assert.deepEqual(installHookCommands, ["harness-kit install-hooks --repo . --stop"]);
+  assert.deepEqual(installHookCommands, [
+    "harness-kit install-hooks --repo . --stop --agents codex --allow-user-dispatcher",
+  ]);
   const unconditionalCiInstructions = out
     .split("\n")
     .filter((line) => /\bCI\b/.test(line) && !/(?:不要|不得|禁止)/.test(line));

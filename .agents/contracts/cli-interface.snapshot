@@ -201,6 +201,8 @@ Options:
                             foreign hooks (default: false)
   --allow-shared-git-hooks  acknowledge native hooks affect every linked
                             worktree (default: false)
+  --allow-user-dispatcher   allow the safe CODEX_HOME dispatcher required by
+                            Codex in linked worktrees (default: false)
   -h, --help                display help for command
 
 ## onboard
