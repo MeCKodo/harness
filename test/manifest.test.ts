@@ -1,12 +1,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateManifest } from "../src/manifest";
+import { fileURLToPath } from "node:url";
+import { loadManifest, validateManifest } from "../src/manifest";
 import type { Manifest } from "../src/manifest";
+
+const REPO = fileURLToPath(new URL("..", import.meta.url));
 
 test("a minimal valid manifest produces no errors", () => {
   const m: Manifest = { spec: "ai-harness/v0", identity: { name: "x", summary: "s" } };
   const errs = validateManifest(m).filter((i) => i.level === "error");
   assert.equal(errs.length, 0);
+});
+
+test("the repository impact map keeps Codex linked hooks with their focused tests", () => {
+  const module = loadManifest(REPO).modules?.find((item) => item.name === "agent-hooks");
+  assert.ok(module);
+  assert.ok(module.owns?.includes("src/codex-linked-hooks.ts"));
+  assert.ok(module.tests?.includes("test/codex-linked-hooks.test.ts"));
 });
 
 test("an unknown manifest spec is rejected instead of being interpreted as v0", () => {

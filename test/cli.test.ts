@@ -45,6 +45,7 @@ test("adoption and native Git hooks expose explicit evidence/scope acknowledgeme
   const hooks = spawnSync(TSX, [CLI, "install-hooks", "--help"], { encoding: "utf8" });
   assert.equal(hooks.status, 0);
   assert.match(hooks.stdout, /--allow-shared-git-hooks/);
+  assert.match(hooks.stdout, /--allow-user-dispatcher/);
 });
 
 test("install-hooks rejects unknown agent names instead of silently writing a config", () => {
