@@ -1,6 +1,13 @@
-import { chmodSync, existsSync, lstatSync } from "node:fs";
+import { chmodSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import pkg from "../../package.json";
+import {
+  commitCodexLinkedInstall,
+  isLinkedGitWorktree,
+  prepareCodexLinkedInstall,
+  type CodexLinkedInstallPlan,
+  type CodexLinkedInstallTestHooks,
+} from "../codex-linked-hooks";
 import { gitRoot } from "../git";
 import { inspectManagedFiles, writeManagedFiles, type ManagedFileInspection } from "../managed-files";
 import { err, info, ok, warn } from "../util";
@@ -210,14 +217,6 @@ function renderCodexConfig(current: string | null): string {
   return lines.join("\n") + "\n";
 }
 
-function isLinkedWorktree(repo: string): boolean {
-  try {
-    return lstatSync(join(repo, ".git")).isFile();
-  } catch {
-    return false;
-  }
-}
-
 function currentByPath(inspections: readonly ManagedFileInspection[]): Map<string, string | null> {
   return new Map(inspections.map((inspection) => [inspection.relativePath, inspection.currentContent]));
 }
@@ -257,17 +256,24 @@ function assertRunnerReplaceable(current: string | null, _force: boolean): void 
   }
 }
 
-export interface StopHookInstallTestHooks {
+export interface StopHookInstallTestHooks extends CodexLinkedInstallTestHooks {
   /** Deterministic seam for reproducing a concurrent edit after render. */
   beforeTransaction?: () => void;
+}
+
+export interface StopHookInstallOptions {
+  force?: boolean;
+  allowUserDispatcher?: boolean;
+  testHooks?: StopHookInstallTestHooks;
 }
 
 export function installStopHooks(
   repo: string,
   agents: AgentTool[],
-  force: boolean,
-  testHooks: StopHookInstallTestHooks = {},
+  opts: StopHookInstallOptions = {},
 ): number {
+  const force = opts.force ?? false;
+  const testHooks = opts.testHooks ?? {};
   if (!agents.length || agents.some((agent) => !ALL_AGENTS.includes(agent))) {
     err(`invalid --agents value; supported: ${ALL_AGENTS.join(",")}`);
     return 1;
@@ -281,6 +287,23 @@ export function installStopHooks(
   if (!existsSync(join(repo, ".agents", "manifest.yaml"))) {
     err("agent hooks require .agents/manifest.yaml — onboard the repository first");
     return 1;
+  }
+  const linkedCodex = agents.includes("codex") && isLinkedGitWorktree(repo);
+  if (linkedCodex && !opts.allowUserDispatcher) {
+    err(
+      "codex project hooks are ignored by current Codex CLI versions in linked worktrees; " +
+        "no Agent hook files changed. Retry with `harness-kit install-hooks --repo . --stop --agents codex --allow-user-dispatcher`",
+    );
+    return 1;
+  }
+  let linkedPlan: CodexLinkedInstallPlan | null = null;
+  if (linkedCodex) {
+    try {
+      linkedPlan = prepareCodexLinkedInstall(repo, installedAgentHookRunnerScript());
+    } catch (error) {
+      err(`codex linked-worktree dispatcher not installed: ${(error as Error).message} — no Agent hook files changed`);
+      return 1;
+    }
   }
   const rels = hookTargetPaths(agents);
   let inspections: ManagedFileInspection[];
@@ -318,18 +341,39 @@ export function installStopHooks(
     return 1;
   }
 
+  if (linkedPlan) {
+    try {
+      commitCodexLinkedInstall(linkedPlan, {
+        beforeUserTransaction: testHooks.beforeUserTransaction,
+        beforeRegistrationTransaction: testHooks.beforeRegistrationTransaction,
+      });
+    } catch (error) {
+      err(
+        `codex linked-worktree dispatcher not activated: ${(error as Error).message}; ` +
+          "project files may be present but no worktree registration was trusted — rerun install-hooks",
+      );
+      return 1;
+    }
+  }
+
   ok(`${(current.get(SCRIPT_REL) ?? null) === null ? "installed" : "updated"} agent hook runner -> ${SCRIPT_REL}`);
   if (agents.includes("claude")) ok("claude: installed SessionStart + Stop hooks -> .claude/settings.json");
   if (agents.includes("cursor")) ok("cursor: installed sessionStart + stop hooks -> .cursor/hooks.json");
   if (agents.includes("codex")) {
     ok("codex: enabled project hooks -> .codex/config.toml");
     ok("codex: installed SessionStart + Stop hooks -> .codex/hooks.json");
+    if (linkedPlan) {
+      ok(`codex: installed linked-worktree dispatcher -> ${join(linkedPlan.codexHome, "harness-kit", "codex-linked-dispatch-v1.cjs")}`);
+      ok(`codex: registered this worktree -> ${join(linkedPlan.gitDir, "harness-kit", "codex-linked-dispatch-v1.json")}`);
+    }
   }
 
   if (agents.includes("codex")) {
-    warn("codex: run `/hooks` to review and trust the new project hooks before they can run");
-    if (isLinkedWorktree(repo))
-      warn("codex: current Codex CLI versions may ignore project hooks in linked worktrees; confirm with `harness-kit evidence` after the first session");
+    warn(
+      linkedPlan
+        ? "codex: run `/hooks` once to review and trust the Harness user dispatcher before it can run"
+        : "codex: run `/hooks` to review and trust the new project hooks before they can run",
+    );
   }
   info("\nSessionStart records the exact task base; every Stop reruns run-checks + verify.");
   info("After the first real agent session, run `harness-kit evidence`; no record means that client surface did not execute project hooks.");

@@ -13,6 +13,7 @@ export interface InstallHooksOpts {
   stop?: boolean; // install agent Stop hooks
   agents?: AgentTool[]; // which agent tools to install Stop hooks for (default: all)
   allowSharedGitHooks?: boolean; // acknowledge that native hooks affect every linked worktree
+  allowUserDispatcher?: boolean; // allow CODEX_HOME fallback required by Codex linked worktrees
 }
 
 interface GitResult {
@@ -225,7 +226,10 @@ export function installHooksCmd(repo: string, opts: InstallHooksOpts = {}): numb
   if (doGit) code = installGitHooks(repo, force, opts.allowSharedGitHooks ?? false) || code;
   if (doStop) {
     if (doGit) info("");
-    code = installStopHooks(repo, opts.agents?.length ? opts.agents : ALL_AGENTS, force) || code;
+    code = installStopHooks(repo, opts.agents?.length ? opts.agents : ALL_AGENTS, {
+      force,
+      allowUserDispatcher: opts.allowUserDispatcher,
+    }) || code;
   }
   return code;
 }

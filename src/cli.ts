@@ -192,6 +192,11 @@ program
   .option("--agents <list>", "comma list of agent tools for --stop: claude,cursor,codex (default: all)")
   .option("--force", "refresh harness-kit-managed hooks; never overwrite foreign hooks", false)
   .option("--allow-shared-git-hooks", "acknowledge native hooks affect every linked worktree", false)
+  .option(
+    "--allow-user-dispatcher",
+    "allow the safe CODEX_HOME dispatcher required by Codex in linked worktrees",
+    false,
+  )
   .action((o) =>
     guard(() =>
       installHooksCmd(repoOf(o), {
@@ -200,6 +205,7 @@ program
         stop: o.stop,
         agents: o.agents ? agentList(String(o.agents)) : undefined,
         allowSharedGitHooks: o.allowSharedGitHooks,
+        allowUserDispatcher: o.allowUserDispatcher,
       }),
     ),
   );

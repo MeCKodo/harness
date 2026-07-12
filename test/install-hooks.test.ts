@@ -245,6 +245,65 @@ test("install-hooks continues worktree-local Stop hooks after shared Git hooks a
   assert.equal(existsSync(join(main, ".claude", "settings.json")), false, "main worktree config untouched");
 });
 
+test("Codex linked-worktree hooks refuse an ineffective project-only install", () => {
+  const main = freshRepo();
+  const linked = addLinkedWorktree(main);
+  const codexHome = mkdtempSync(join(tmpdir(), "hk-hooks-codex-home-"));
+  const previous = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = codexHome;
+  try {
+    const result = captureOutput(() => installHooksCmd(linked, { stop: true, agents: ["codex"] }));
+    assert.equal(result.code, 1);
+    assert.match(result.output, /--allow-user-dispatcher/);
+    assert.equal(existsSync(join(linked, ".agents", "hooks", "harness-agent-hook.sh")), false);
+    assert.equal(existsSync(join(linked, ".codex", "hooks.json")), false);
+    assert.equal(existsSync(join(codexHome, "hooks.json")), false);
+    assert.equal(
+      existsSync(join(git(linked, ["rev-parse", "--absolute-git-dir"]), "harness-kit", "codex-linked-dispatch-v1.json")),
+      false,
+    );
+  } finally {
+    if (previous === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previous;
+  }
+});
+
+test("Codex linked-worktree fallback installs project files, user dispatcher, and activation last", () => {
+  const main = freshRepo();
+  const linked = addLinkedWorktree(main);
+  const codexHome = mkdtempSync(join(tmpdir(), "hk-hooks-codex-home-"));
+  writeFileSync(
+    join(codexHome, "hooks.json"),
+    JSON.stringify({ hooks: { SessionStart: [{ _foreign: true, hooks: [] }], Stop: [] }, keep: true }) + "\n",
+  );
+  const previous = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = codexHome;
+  try {
+    assert.equal(
+      installHooksCmd(linked, {
+        stop: true,
+        agents: ["codex"],
+        allowUserDispatcher: true,
+      }),
+      0,
+    );
+    assert.ok(existsSync(join(linked, ".agents", "hooks", "harness-agent-hook.sh")));
+    assert.ok(existsSync(join(linked, ".codex", "hooks.json")));
+    assert.ok(existsSync(join(codexHome, "harness-kit", "codex-linked-dispatch-v1.cjs")));
+    assert.ok(
+      existsSync(join(git(linked, ["rev-parse", "--absolute-git-dir"]), "harness-kit", "codex-linked-dispatch-v1.json")),
+    );
+    const userHooks = JSON.parse(readFileSync(join(codexHome, "hooks.json"), "utf8"));
+    assert.equal(userHooks.keep, true);
+    assert.equal(userHooks.hooks.SessionStart[0]._foreign, true);
+    assert.equal(userHooks.hooks.SessionStart.at(-1)._harnessKit, "codex-linked-dispatch-v1");
+    assert.equal(userHooks.hooks.Stop.at(-1)._harnessKit, "codex-linked-dispatch-v1");
+  } finally {
+    if (previous === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previous;
+  }
+});
+
 test("install-hooks --stop writes a pinned shared runner + SessionStart/Stop hooks per agent tool", () => {
   const dir = freshRepo();
   assert.equal(installHooksCmd(dir, { stop: true }), 0);
@@ -304,8 +363,10 @@ test("Agent hook install refuses a config changed after render and preserves the
   writeFileSync(path, JSON.stringify({ owner: "initial", mustPreserve: false }));
 
   const concurrent = JSON.stringify({ owner: "concurrent", mustPreserve: true });
-  const result = installStopHooks(dir, ["claude"], false, {
-    beforeTransaction: () => writeFileSync(path, concurrent),
+  const result = installStopHooks(dir, ["claude"], {
+    testHooks: {
+      beforeTransaction: () => writeFileSync(path, concurrent),
+    },
   });
 
   assert.equal(result, 1);
