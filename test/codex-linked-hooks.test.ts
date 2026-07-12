@@ -78,6 +78,13 @@ test("detects a standard linked worktree without Orca-specific state", () => {
   assert.equal(isLinkedGitWorktree(fixture.linked), true);
 });
 
+test("does not mistake a Git submodule for a linked worktree", () => {
+  const child = committedRepo();
+  const parent = committedRepo();
+  git(parent, ["-c", "protocol.file.allow=always", "submodule", "add", "-q", child, "vendor/child"]);
+  assert.equal(isLinkedGitWorktree(join(parent, "vendor", "child")), false);
+});
+
 test("installs one inert user dispatcher and routes only a registered linked worktree", () => {
   const fixture = linkedFixture();
   const foreignStart = { _foreign: true, hooks: [{ type: "command", command: "echo foreign-start" }] };

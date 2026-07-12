@@ -213,7 +213,16 @@ function runnerMode(repoRoot: string, content: string): number {
 
 export function isLinkedGitWorktree(repo: string): boolean {
   try {
-    return lstatSync(join(gitRoot(repo), ".git")).isFile();
+    const root = gitRoot(repo);
+    const current = canonical(gitAdminDir(root));
+    const common = canonical(
+      execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
+        cwd: root,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      }).trim(),
+    );
+    return current !== common;
   } catch {
     return false;
   }
@@ -485,4 +494,3 @@ export function inspectCodexLinkedHooks(repoInput: string): CodexLinkedInspectio
 
   return { linked: true, configured: issues.length === 0, issues, artifacts };
 }
-
