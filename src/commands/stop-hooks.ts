@@ -204,7 +204,7 @@ function renderCodexConfig(current: string | null): string {
 
   if (featuresStart < 0) {
     if (lines.length && lines.at(-1) !== "") lines.push("");
-    lines.push("[features]", "# harness-kit: required for Codex lifecycle hooks", "hooks = true");
+    lines.push("[features]", "# harness-kit: required for project lifecycle hooks", "hooks = true");
   } else {
     const featureKeys: number[] = [];
     for (let index = featuresStart + 1; index < featuresEnd; index++) {
@@ -216,7 +216,7 @@ function renderCodexConfig(current: string | null): string {
       lines[first] = `${indent}hooks = true`;
       for (const duplicate of featureKeys.slice(1).reverse()) lines.splice(duplicate, 1);
     } else {
-      lines.splice(featuresStart + 1, 0, "# harness-kit: required for Codex lifecycle hooks", "hooks = true");
+      lines.splice(featuresStart + 1, 0, "# harness-kit: required for project lifecycle hooks", "hooks = true");
     }
   }
   return lines.join("\n") + "\n";
