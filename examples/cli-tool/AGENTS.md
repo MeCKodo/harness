@@ -6,16 +6,17 @@
 
 ## Working agreement (read first)
 
-This file and everything under `.agents/` are GENERATED from `.agents/manifest.yaml`. Do NOT edit them by hand — edit the manifest and run `harness-kit sync`.
+`AGENTS.md`, `CLAUDE.md`, and `.agents/reference.md` are GENERATED from `.agents/manifest.yaml`; `.agents/routing.md` / `.agents/modules.md` are generated when those sections are declared. Do NOT edit those files by hand — edit the manifest and run `harness-kit sync`. Knowledge is hand-authored; `.agents/hooks/` is managed by `harness-kit install-hooks`.
 
 Before you touch code:
 1. Post a **Task Brief** in chat: what you'll change, which change-type it is, which layers/files it touches, and how you'll verify.
 2. Read the relevant files before editing. Do NOT full-repo grep and guess.
+   If lifecycle hooks are not active, record the task-start commit before editing so committed work can later be checked with `run-checks --base <sha>`.
 
 Before you finish:
-3. Run `harness-kit verify`. It enforces the invariants below and prints a **GAPS** list of what it cannot check.
+3. Run `harness-kit run-checks` to verify THIS change (impact-driven) and `harness-kit verify` for drift/invariants. Treat blocking gaps as unfinished work — close them; only eligible coverage gaps may be waived with a scoped reason.
 4. **Never claim a check you didn't run.** If something is a GAP (packaging, real network, prod upload), say so — don't pretend it passed.
-5. If you learned something an agent could not infer from code (a gotcha, a decision, a fix), capture it under `.agents/knowledge/` (a journal ADR for decisions). Do NOT record one-off noise or anything already obvious from the code.
+5. If you learned something an agent could not infer from code (a gotcha, a decision, a fix), update the registered knowledge source in place, or add new Harness-owned knowledge under `.agents/knowledge/` (a journal ADR for decisions). Never move/copy an existing repo document just to fit a folder name. Do NOT record one-off noise or anything already obvious from the code.
 
 ## Scope
 
@@ -39,16 +40,7 @@ Downstream: 使用者的终端 / CI 流水线
 - `build`: `pnpm build` — 编译到 bin/acme-deploy
 - `test`: `pnpm test`
 - `lint`: `pnpm lint`
-- `run`: `node bin/acme-deploy` — 无参数无意义，须带子命令
-  - example: `acme-deploy up --env staging --service web`
-- `smoke`: `pnpm smoke` — 对 fixture 集群跑一遍冒烟
 - `verify`: `harness verify`
-- `release`: `pnpm release` — 发布新版本 bin (mutating — confirm first)
-
-## Environment
-
-- `KUBECONFIG` (required) (secret — never hardcode/commit) — 目标集群凭证路径
-- `REGISTRY_TOKEN` (required) (secret — never hardcode/commit) — 镜像仓库令牌
 
 ## Contracts (breaking changes need a version bump)
 
@@ -64,6 +56,9 @@ Run `harness-kit verify` to check the enforceable ones.
 
 ## Knowledge & maps (load on demand)
 
-- Domain / conventions / decisions: `.agents/knowledge/`
+- Harness-owned domain / conventions / decisions: `.agents/knowledge/`
+- Full commands, environment, and registered knowledge catalog: `.agents/reference.md`
+- Module map + common pitfalls: `.agents/modules.md`
+- Implement -> verify loop (deep guide): run `harness-kit check-loop`
 - Tooling adoption log (earn heavier tooling): `.agents/adoption.md`
 - Task playbooks: `.agents/playbooks/`

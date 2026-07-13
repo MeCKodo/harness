@@ -1,8 +1,14 @@
 {
   "bindings": {
     "knowledge/conventions.md": {
-      "eslint.config.js": "(missing)",
-      "tsconfig.json": "(missing)"
+      "eslint.config.js": "d7076912d1c9786ca76231a2a77cef475b7fafbe4950a8ecc430af171422993c",
+      "tsconfig.json": "ee3a36c5295f8f930609f6edd751b71c690e90c111433f2685d65200a2c0cf12"
+    },
+    "module:data-layer": {
+      "src/api/client.ts": "6a97d5a754a75cf4851e339f46a3849b44280e04567cd291e438c0de3af7f083"
+    },
+    "module:ui": {
+      "src/components/index.ts": "b277063e33a62fcde2e22a2e0d142dc73a275012502f1a00395a6eb878374a5e"
     }
   }
 }

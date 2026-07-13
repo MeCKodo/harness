@@ -1,6 +1,6 @@
 {
   "name": "@erzhe/harness-kit",
-  "version": "0.1.4",
+  "version": "0.3.0",
   "type": "module",
   "description": "AI-friendly repo harness: a manifest.yaml single source of truth that generates AGENTS.md / CLAUDE.md / Cursor rules and enforces invariants, contracts and drift via `harness-kit verify`.",
   "keywords": [
@@ -48,12 +48,14 @@
     "prepare": "pnpm build"
   },
   "dependencies": {
-    "commander": "^15.0.0",
+    "commander": "^13.1.0",
     "fast-glob": "^3.3.3",
+    "picomatch": "^4.0.2",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
+    "@types/picomatch": "^4.0.2",
     "esbuild": "^0.28.1",
     "tsx": "^4.22.5",
     "typescript": "^6.0.3"

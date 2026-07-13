@@ -68,5 +68,35 @@ knowledge:
   - path: knowledge/journal/
     role: journal
 
+# 影响面：前端也有逻辑层，不是只有 UI（见 SPEC §10）——按真实模块边界划分，别套死模板
+modules:
+  - name: data-layer
+    role: 调后端的 API 客户端与数据 hooks
+    entry: ["src/api/client.ts"]
+    owns: ["src/api/**"]
+    tests: ["src/api/**/*.test.ts", "test/api/**"]
+    checks: ["test", "typecheck"]
+    test_touch: required
+    pitfalls:
+      - 组件不直接 fetch，统一走这里
+  - name: ui
+    role: UI 组件与页面
+    entry: ["src/components/index.ts"]
+    owns: ["src/components/**", "src/pages/**"]
+    tests: ["src/**/*.spec.tsx", "e2e/**"]
+    checks: ["test", "e2e"]
+    test_touch: advisory
+
+# 命名 checkset，改 UI 时用 run-checks --profile ui-change 一把梭
+validation:
+  policies:
+    test_touch_default: advisory
+  required_coverage: ["src/**"]
+  checksets:
+    ui-change: { checks: ["test", "e2e", "typecheck"] }
+  defaults:
+    no_match: ["typecheck"]
+    always: ["lint"]
+
 playbooks:
   dir: playbooks/

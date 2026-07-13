@@ -4,13 +4,135 @@
 
 ## cli — 命令入口与分发（commander）
 - Entry: `src/cli.ts`
+- Owns (prod): `src/cli.ts`, `scripts/cli-interface-snapshot.mjs`
+- Tests: `test/cli.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
 - Pitfall: 新命令记得用 guard() 包裹，统一错误退出码
+- Pitfall: 公开命令或 flag 改动要更新完整 help snapshot，不能只看顶层 --help
+
+## manifest — manifest schema + 加载 + 校验
+- Entry: `src/manifest.ts`
+- Owns (prod): `src/manifest.ts`, `SPEC-v0.md`, `.agents/manifest.yaml`, `examples/*/.agents/manifest.yaml`
+- Tests: `test/manifest.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+- Pitfall: contract id 必须是跨平台安全的直接文件名、ASCII case-fold 后唯一且避开系统保留名；所有执行型 glob 都要限制长度并在 schema 期编译
 
 ## render — manifest -> 各工具文件的生成器
 - Entry: `src/render.ts`
+- Owns (prod): `src/render.ts`
+- Tests: `test/render.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
 - Must know: routing/modules 只在声明时才生成对应 .agents/*.md
 - Pitfall: AGENTS.md 要保持精简，别把 routing/modules 全文塞进去
 
 ## enforce — 声明式不变量执行（确定性，无 LLM）
 - Entry: `src/enforce.ts`
+- Owns (prod): `src/enforce.ts`
+- Tests: `test/enforce.test.ts`
+- Checks: `test`, `typecheck`
 - Pitfall: path_glob 是 include-only；想排除文件只能靠缩小 glob 范围
+
+## planner — 纯函数影响面 planner（diff -> checks + gaps，无 IO）
+- Entry: `src/planner.ts`
+- Owns (prod): `src/planner.ts`
+- Tests: `test/planner.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+- Pitfall: 保持纯函数：不碰 git / fs / 进程，只做 glob 匹配，方便单测
+
+## git-diff — 安全收集 committed / staged / unstaged / untracked 改动并生成指纹
+- Entry: `src/git.ts`
+- Owns (prod): `src/git.ts`
+- Tests: `test/git.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+- Pitfall: Git ref 必须用参数数组传给 git，禁止拼进 shell
+- Pitfall: SessionStart 基线必须用 exact diff，不能用 merge-base 吞掉会话内 commit
+- Pitfall: nested --repo 必须只返回 target 内且 target-relative 的路径，不能混入兄弟 package
+- Pitfall: fingerprint 必须覆盖 Git 可执行位，以及 submodule 当前 commit/脏状态，不能只 hash 普通文件内容
+
+## validation-runner — plan-checks / run-checks / evidence 与持久化验收状态
+- Entry: `src/commands/run-checks.ts`
+- Owns (prod): `src/commands/plan-checks.ts`, `src/commands/run-checks.ts`, `src/commands/evidence.ts`, `src/validation-state.ts`
+- Tests: `test/run-checks.test.ts`, `test/validation-state.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+- Pitfall: run-checks 只执行可终止、无副作用的 capability；unknown/background/mutating 都必须 fail closed
+- Pitfall: waiver 只允许覆盖类 gap，且仅对同一 change fingerprint + gap kind + scope 生效，理由不能为空
+- Pitfall: evidence 读取时必须重算 fingerprint；代码变化后的旧绿灯必须 stale + 非零退出
+- Pitfall: 手动 evidence 的整体 valid 也要求同指纹 verifyPassed，run-checks 单独通过只算 runChecksValid
+- Pitfall: 无 lifecycle session 时，隐式 HEAD 的 no-change 不能证明已 commit 的任务；手动验收必须传 task-start base
+
+## agent-hooks — Claude Code / Cursor / Codex 的 SessionStart + Stop 生命周期门禁
+- Entry: `src/commands/hook-event.ts`
+- Owns (prod): `src/commands/install-hooks.ts`, `src/commands/stop-hooks.ts`, `src/commands/hook-event.ts`, `src/hook-status.ts`, `src/codex-linked-hooks.ts`
+- Tests: `test/install-hooks.test.ts`, `test/hook-event.test.ts`, `test/codex-linked-hooks.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+- Pitfall: Claude/Codex 用 stdout JSON decision=block；Cursor 用 stdout JSON followup_message
+- Pitfall: stop_hook_active 不是跳过验证的理由，每次结束尝试都重新检查
+- Pitfall: run-checks 7 分钟 + verify 2 分钟必须小于客户端 10 分钟 hook 上限，超时要来得及返回 blocking 协议
+- Pitfall: Codex linked worktree 必须显式安装用户分发器 fallback；无登记 silent no-op，有登记但路径/权限/runner hash 不一致则 fail closed
+- Pitfall: linked worktree 只能有一条 Harness 生命周期路径；安装时移除自己的项目 Hook、保留第三方项目 Hook，状态发现双路径必须 DEGRADED
+- Pitfall: linked worktree 要比较 canonical git-dir 与 git-common-dir，不能把同样使用 .git 文件的 submodule 误判为 linked
+- Pitfall: Orca 的 CODEX_HOME 是生成态；用户分发器必须写入 ~/.codex 源配置并由新终端镜像，不能补丁运行时 hooks、Orca 管理脚本或 trust 状态
+- Pitfall: 原生 Git hooks 可能由 linked worktrees 共享；默认拒绝共享/custom/global/foreign hooks，不能用 --force 覆盖第三方 hook
+- Pitfall: Agent hook runner 与客户端配置必须整组预检、事务写入；拒绝配置软链接和未知 hooks 结构，不能写到项目外或留半套配置
+- Pitfall: ACTIVE 只认安装器生成的精确 runner 与逐 agent/event 命令；marker 文本或不安全 HARNESS_KIT_CMD 前缀都不构成配置证据
+- Pitfall: ACTIVE evidence 必须绑定 SessionStart 时的 runner/client-config 指纹；合法 override 或配置变化后旧证据也只能 DEGRADED
+- Pitfall: Hook 配置渲染依据的旧字节必须绑定同一次事务 preflight；并发更新要失败并保留新内容
+- Pitfall: 用户分发器登记必须最后写入；ACTIVE 指纹只绑定 Harness managed 用户入口，不得被无关第三方用户 Hook 变化污染
+
+## managed-generation — 生成文件接管、软链接边界与事务写入
+- Entry: `src/managed-files.ts`
+- Owns (prod): `src/managed-files.ts`, `src/adoption.ts`, `src/commands/{init,prepare-adoption,record-adoption-audit,sync}.ts`
+- Tests: `test/managed-files.test.ts`, `test/adoption.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+- Pitfall: 接管授权必须在同一次 preflight 上完成，不能先 inspect 再另一次 write 留 TOCTOU 缝隙
+- Pitfall: audit bundle/receipt 必须在仓外且内容寻址；apply 重新渲染核对，不能把候选当任意写入源
+- Pitfall: init 非 force 要先统一预检全部 scaffold；legacy 文件 mode 与 guidance 的原位字节/拓扑都必须进入审计绑定
+- Pitfall: guidance 普通文件必须走仓库范围的 O_NOFOLLOW + inode 绑定读取；不能 lstat 后直接按路径 read 留软链接替换窗口
+- Pitfall: declared/unverified 不能命名成 verified；本地 hash 没有外部身份信任根
+- Pitfall: sync 不得写 .agents/.harness-state.json；语义新鲜度只由 record-context-review 推进
+
+## context-freshness — 任意 repo 文档登记、authority 语义与 Agent review evidence
+- Entry: `src/state.ts`
+- Owns (prod): `src/state.ts`, `src/commands/record-context-review.ts`
+- Tests: `test/state.test.ts`, `test/context-review.test.ts`, `test/doctor.test.ts`, `test/verify.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+- Pitfall: root=repo 表示 path 从仓库根解析，不代表固定目录名，也不搬运业务文档
+- Pitfall: authority=derived/policy/review 都要求显式 Agent 复核；hash 只能证明之后没变，不能证明分析质量
+- Pitfall: 删除 binds、切换 authority 或绑定源缺失都必须让旧 review 失效，不能靠旧 hash 继续显示 current
+
+## core-gates — init/sync/doctor/verify/contract/enforcement 的通用基础
+- Entry: `src/commands/verify.ts`
+- Owns (prod): `src/commands/{accept,doctor,verify}.ts`, `src/{contracts,util}.ts`
+- Tests: `test/contracts.test.ts`, `test/state.test.ts`, `test/examples.test.ts`
+- Checks: `test`, `typecheck`
+- Pitfall: verify --json 对 repo-controlled matcher/文件系统异常也必须只输出一份结构化失败报告
+- Pitfall: accept-contract 必须先校验 manifest，基线只能写 .agents/contracts 的安全普通文件
+
+## bundled-skills — onboard / check-loop 技能的定位、输出与维护
+- Entry: `src/skill.ts`
+- Owns (prod): `src/skill.ts`, `src/commands/{onboard,check-loop}.ts`, `skills/**`
+- Tests: `test/onboard.test.ts`
+- Checks: `test`, `typecheck`
+
+## examples — 四种接入形态的可读、doctor-healthy 回归样板
+- Entry: `test/examples.test.ts`
+- Owns (prod): `examples/**`
+- Tests: `test/examples.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+
+## repository-assets — 包元数据、生成状态、项目文档与本仓维护配置
+- Entry: `package.json`
+- Owns (prod): `.agents/**`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `docs/**`, `.gitignore`, `package.json`, `pnpm-lock.yaml`
+- Tests: `test/**`
+- Checks: `test`, `typecheck`
+- Pitfall: package 声明 Node >=18，runtime 依赖不得偷偷抬高版本下限；发布包要用真实 Node 18 跑 CLI smoke

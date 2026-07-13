@@ -57,5 +57,24 @@ knowledge:
   - path: knowledge/journal/
     role: journal          # 例：为什么双格式发布、为什么弃用某 API
 
+# 影响面：把 diff 映射到模块，算出该跑的 checks（见 SPEC §10）
+modules:
+  - name: public-api
+    role: 公共 API 与实现
+    entry: ["src/index.ts"]
+    owns: ["src/**"]
+    tests: ["src/**/*.test.ts", "test/**"]
+    checks: ["test", "typecheck"]
+    test_touch: required
+    pitfalls:
+      - 新增导出必须经 src/index.ts
+
+validation:
+  policies:
+    test_touch_default: advisory
+  required_coverage: ["src/**"]
+  defaults:
+    always: ["typecheck"]   # 任何改动都至少类型检查
+
 playbooks:
   dir: playbooks/          # 例：add-public-api / cut-a-release

@@ -1,5 +1,5 @@
 import { readBaseline, runCapture, writeBaseline } from "../contracts";
-import { loadManifest } from "../manifest";
+import { loadManifest, validateManifest } from "../manifest";
 import { err, info, ok } from "../util";
 
 /**
@@ -9,6 +9,11 @@ import { err, info, ok } from "../util";
  */
 export function acceptContractCmd(repo: string, id?: string): number {
   const m = loadManifest(repo);
+  const manifestErrors = validateManifest(m).filter((issue) => issue.level === "error");
+  if (manifestErrors.length) {
+    for (const issue of manifestErrors) err(`manifest invalid: ${issue.msg}`);
+    return 1;
+  }
   const withSnapshot = (m.contracts ?? []).filter((c) => c.snapshot);
   const targets = id ? withSnapshot.filter((c) => c.id === id) : withSnapshot;
 
@@ -25,13 +30,18 @@ export function acceptContractCmd(repo: string, id?: string): number {
   for (const c of targets) {
     const cap = runCapture(repo, c.snapshot!);
     if (!cap.ok) {
-      err(`${c.id}: snapshot command failed (${c.snapshot})`);
+      err(`${c.id}: snapshot command ${cap.timedOut ? "timed out" : "failed"} (${c.snapshot})`);
       problems++;
       continue;
     }
-    const prev = readBaseline(repo, c.id);
-    writeBaseline(repo, c.id, cap.stdout);
-    ok(`${prev === null ? "created" : "updated"} baseline for ${c.id} -> .agents/contracts/${c.id}.snapshot`);
+    try {
+      const prev = readBaseline(repo, c.id);
+      writeBaseline(repo, c.id, cap.stdout);
+      ok(`${prev === null ? "created" : "updated"} baseline for ${c.id} -> .agents/contracts/${c.id}.snapshot`);
+    } catch (error) {
+      err(`${c.id}: cannot store contract baseline safely (${(error as Error).message})`);
+      problems++;
+    }
   }
   return problems ? 1 : 0;
 }

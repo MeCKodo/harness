@@ -66,5 +66,31 @@ knowledge:
   - path: knowledge/journal/
     role: journal
 
+# 影响面：把 diff 映射到模块，算出该跑的 checks（见 SPEC §10）
+modules:
+  - name: commands
+    role: 子命令定义与参数解析
+    entry: ["src/commands/index.ts"]
+    owns: ["src/commands/**"]
+    tests: ["test/commands/**"]
+    checks: ["test"]
+    test_touch: required
+    pitfalls:
+      - 加子命令记得同步 --help 与 cli-interface 契约快照
+  - name: orchestrator
+    role: 部署编排核心逻辑
+    entry: ["src/orchestrator.ts"]
+    owns: ["src/orchestrator.ts", "src/orchestrator/**"]
+    tests: ["test/orchestrator/**"]
+    checks: ["test", "smoke"]
+    test_touch: advisory
+
+validation:
+  policies:
+    test_touch_default: advisory
+  required_coverage: ["src/**"]
+  defaults:
+    no_match: ["lint"]
+
 playbooks:
   dir: playbooks/          # 例：add-subcommand

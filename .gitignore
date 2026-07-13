@@ -12,6 +12,9 @@ pnpm-workspace.yaml
 # upgrades don't break real project shapes. Local-only, never pushed.
 /fixtures/
 
+# Local oh-my-codex orchestration state.
+/.omx/
+
 # Local release secrets & runbook — NEVER commit.
 # .npmrc holds a live npmjs publish token; RELEASE.local.md is the runbook.
 .npmrc
