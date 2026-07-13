@@ -3,7 +3,7 @@
 > 一套 AI-friendly 的仓库规范。定义"任何仓库要让 Agent 冷启动即可高效工作、且人人构建出一致范式，必须声明什么、怎么声明、怎么防过期"。
 > 配套 CLI：`ai-harness`（`init` / `sync` / `doctor` / `verify`）。manifest 标签仍为 `ai-harness/v0`（v0 主线）。
 >
-> 设计背景与调研见 `DESIGN.md`。本文件是规范正文。
+> 本文件是随仓库与 npm 包公开分发的规范正文。
 >
 > **v0.3 相比 v0.2**：补齐真实仓库验证暴露出的安全与可信度边界——严格 spec、事务生成、首次接管快照、原位置知识登记、显式 Agent 复核、结构化 verify、Hook 活性状态、worktree-safe Git hooks，以及 Codex linked-worktree 的受限用户分发器 fallback。
 > manifest 标签仍是唯一受支持的 `ai-harness/v0`；任何未知标签（例如 `ai-harness/v999`）必须 fail closed，不能按“未来版本大概兼容”继续执行。
