@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.agents/hooks/harness-agent-hook.sh\" codex session-start || { echo 'harness-kit hook runner is missing or failed; run harness-kit run-checks and harness-kit verify manually' >&2; exit 2; }",
+            "timeout": 600
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.agents/hooks/harness-agent-hook.sh\" codex stop || printf '%s\\n' '{\"decision\":\"block\",\"reason\":\"harness-kit hook runner is missing or failed; run harness-kit run-checks and harness-kit verify manually\"}'",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
+}

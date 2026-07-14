@@ -24,6 +24,19 @@ test("the repository impact map keeps Codex linked hooks with their focused test
   );
 });
 
+test("the repository impact map keeps shared guidance with its focused tests", () => {
+  const module = loadManifest(REPO).modules?.find((item) => item.name === "core-gates");
+  assert.ok(module);
+  assert.ok(module.owns?.includes("src/{contracts,util,guidance}.ts"));
+  assert.ok(module.tests?.includes("test/guidance.test.ts"));
+});
+
+test("the repository impact map owns project-level Codex lifecycle configuration", () => {
+  const module = loadManifest(REPO).modules?.find((item) => item.name === "repository-assets");
+  assert.ok(module);
+  assert.ok(module.owns?.includes(".codex/**"));
+});
+
 test("an unknown manifest spec is rejected instead of being interpreted as v0", () => {
   const m: Manifest = { spec: "ai-harness/v999", identity: { name: "x", summary: "s" } };
   const errors = validateManifest(m)

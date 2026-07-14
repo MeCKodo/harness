@@ -53,12 +53,15 @@ export function renderAgentsMd(m: Manifest): string {
       "3. Run `harness-kit run-checks` to verify THIS change (impact-driven) and `harness-kit verify` for drift/invariants. Treat blocking gaps as unfinished work — close them; only eligible coverage gaps may be waived with a scoped reason.",
     );
   else
-    L.push("3. Run `harness-kit verify`. It enforces the invariants below and prints a **GAPS** list of what it cannot check.");
+    L.push("3. Run `harness-kit verify`. It enforces the invariants below and classifies anything it cannot check automatically.");
   L.push(
-    "4. **Never claim a check you didn't run.** If something is a GAP (packaging, real network, prod upload), say so — don't pretend it passed.",
+    "4. Read `NEXT ACTIONS` (or JSON `nextActions`): complete every `required | agent` action automatically before finishing; ask the user only for a `required | human` decision. Defer `recommended` maintenance during unrelated product work.",
   );
   L.push(
-    "5. If you learned something an agent could not infer from code (a gotcha, a decision, a fix), update the registered knowledge source in place, " +
+    "5. **Never claim a check you didn't run.** Informational boundaries (packaging, real network, prod upload) are not failures; mention one only when it is relevant to this task.",
+  );
+  L.push(
+    "6. If you learned something an agent could not infer from code (a gotcha, a decision, a fix), update the registered knowledge source in place, " +
       "or add new Harness-owned knowledge under `.agents/knowledge/` (a journal ADR for decisions). Never move/copy an existing repo document just to fit a folder name. " +
       "Do NOT record one-off noise or anything already obvious from the code.",
   );

@@ -175,10 +175,34 @@ modules:
   assert.equal(before.code, 1);
   assert.equal(JSON.parse(before.output).runChecksValid, true);
   assert.equal(JSON.parse(before.output).valid, false);
+  assert.ok(JSON.parse(before.output).nextActions.some((action: any) => action.id === "complete-verify"));
 
   assert.equal(capture(() => verifyCmd(repo)).code, 0);
   const after = capture(() => evidenceCmd(repo, { json: true }));
   assert.equal(after.code, 0);
   assert.equal(JSON.parse(after.output).valid, true);
   assert.equal(JSON.parse(after.output).evidence.verifyPassed, true);
+  assert.ok(JSON.parse(after.output).nextActions.some((action: any) => action.id === "install-lifecycle-hooks"));
+});
+
+test("missing evidence JSON tells an Agent exactly how to create and prove it", () => {
+  const repo = mkdtempSync(join(tmpdir(), "hk-state-no-evidence-"));
+  execFileSync("git", ["init", "-q"], { cwd: repo });
+  const original = process.stdout.write.bind(process.stdout);
+  const chunks: string[] = [];
+  (process.stdout as unknown as { write: (chunk: string | Uint8Array) => boolean }).write = (chunk) => {
+    chunks.push(String(chunk));
+    return true;
+  };
+  let code: number;
+  try {
+    code = evidenceCmd(repo, { json: true });
+  } finally {
+    (process.stdout as unknown as { write: typeof process.stdout.write }).write = original;
+  }
+  assert.equal(code, 1);
+  const body = JSON.parse(chunks.join(""));
+  assert.equal(body.found, false);
+  assert.ok(body.nextActions.some((action: any) => action.id === "record-delivery-evidence" && action.owner === "agent"));
+  assert.ok(body.nextActions.some((action: any) => action.id === "install-lifecycle-hooks"));
 });

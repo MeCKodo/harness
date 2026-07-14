@@ -77,8 +77,8 @@ harness-kit 的长期价值不在首次接入，而在**代码演进时上下文
 | `harness-kit prepare-adoption` | 在仓外生成私有 blind-audit bundle；包含旧入口、嵌套 AGENTS/CLAUDE 及它们显式引用的文档证据和确定性候选，不改仓内文件 |
 | `harness-kit record-adoption-audit` | 把声明的 pass/fail、理由和审计报告 hash 绑定到一版候选 |
 | `harness-kit sync --adopt-existing --candidate ... --audit ...` | 首次接管：只有 live legacy、候选、manifest 和 pass receipt 逐字节一致才事务写入 |
-| `harness-kit doctor` | 体检：完整性 / 路径引用 / 漂移 / 新鲜度 / 体量预算 |
-| `harness-kit verify [--json]` | 门禁：跑不变量 + 契约 + 漂移，列出 GAPS；可输出单个结构化 JSON，失败非 0 退出 |
+| `harness-kit doctor [--details]` | 体检：完整性 / 路径引用 / 漂移 / 新鲜度 / 体量预算；默认折叠无需马上处理的边界 |
+| `harness-kit verify [--json] [--details]` | 门禁：跑不变量 + 契约 + 漂移，给出分类后的下一步；失败非 0 退出 |
 | `harness-kit accept-contract` | 有意变更接口后，记录新的契约指纹为基线 |
 | `harness-kit install-hooks` | 可选装原生 Git hooks；共享 worktree、自定义/全局路径或第三方 hook 时安全拒绝 |
 | `harness-kit install-hooks --stop --agents <client>` | 只给实际使用的客户端装生命周期门禁：会话开始记基线，结束前跑 `run-checks` + `verify` |
@@ -90,6 +90,17 @@ harness-kit 的长期价值不在首次接入，而在**代码演进时上下文
 | `harness-kit check-loop` | 打印给 Agent 使用的“实现 → 验收 → 修复 → 再验收”指南 |
 
 所有命令都支持 `-C <dir>` 指定目标仓库（默认当前目录）。
+
+### 怎么看验证结果
+
+`verify` 不再把所有无法自动执行的事项混成一个 GAP 数字：
+
+- **REQUIRED | AGENT**：当前 Agent 自动完成后才能收尾，例如安装 Hook、重跑过期 evidence。
+- **REQUIRED | HUMAN**：Harness 发现不属于自己的 Hook 或必须由宿主授权，只请你确认这一项具体变更。
+- **RECOMMENDED**：自动化覆盖可以继续改善，只在首次接入或专门维护 Harness 时处理，不扩大普通业务任务。
+- **INFORMATIONAL**：发布、真实网络、生产上传、后台服务等只在相关任务中验证，不是失败，也不需要平时逐条处理。
+
+默认文本只展开当前必须处理的动作；`--details` 展开全部声明，`--json` 提供 `gapDetails`、`gapSummary` 和 `nextActions` 给 Agent 稳定执行。`verify: OK` 表示声明的确定性门禁已通过；只有同时显示 `Harness readiness: READY`，才表示 Lifecycle Hook 等初始化收尾也已完成。
 
 首次接管是一个窄状态机，不靠 Agent 记住长说明：`init` 保存将被接管的旧入口 → `prepare-adoption` 在仓外收集原地 guidance 并生成候选 → 独立 Agent 盲审 → `record-adoption-audit` 绑定报告 → 带 candidate/receipt 的 `sync --adopt-existing` 才能写真实入口。manifest、旧入口、snapshot/index、嵌套入口/显式引用文档、候选文件或审计报告任一变化，旧回执立即失效；裸 `--adopt-existing` 不能接管。回执明确写 `assurance: declared`、`independence: unverified`：它能强制顺序和准确字节，不能在没有外部身份系统时伪装证明“审计者一定独立、语义判断一定正确”。
 
@@ -143,7 +154,7 @@ knowledge:
 - **怎么跑** → `capabilities`（setup / build / test / dev…）
 - **什么绝不能破** → `invariants`（声明式正则门禁）+ `contracts`（接口指纹基线）
 - **改东西看哪** → `routing`（按改动类型导航）+ `modules`（模块卡）
-- **哪些验证不了** → `GAPS`（诚实标注，绝不谎报）
+- **哪些验证不了** → 分类后的验证边界与 `nextActions`（明确何时需要、谁来处理）
 
 harness-kit 把这些沉淀进 manifest，再确定性地生成与校验。
 
@@ -162,7 +173,7 @@ harness-kit 把这些沉淀进 manifest，再确定性地生成与校验。
 - **不变量**：声明式正则 `enforcement`（确定性、无 LLM），或标 `manual`
 - **契约**：`snapshot` 打印接口指纹 → CLI 存基线并 diff（协议无关）
 - **新鲜度**：知识条目可登记任意 repo 内相对路径；`authority` 决定语义责任，Agent 审查后记录内容与 `binds` hash，任何一侧变化都会失效
-- **GAPS**：打包 / 真网络 / 生产上传等本地验证不了的，显式列出
+- **验证边界**：打包 / 真网络 / 生产上传等本地验证不了的，按场景保留；默认不冒充故障反复提醒
 
 ---
 

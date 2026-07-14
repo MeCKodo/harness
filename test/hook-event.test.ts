@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { installHooksCmd } from "../src/commands/install-hooks";
 import { syncCmd } from "../src/commands/sync";
 import { inspectAgentHookStatus } from "../src/hook-status";
-import { manualValidationSession } from "../src/validation-state";
+import { manualValidationSession, recordValidationEvidence } from "../src/validation-state";
 
 const CLI = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
 const TSX = fileURLToPath(new URL("../node_modules/.bin/tsx", import.meta.url));
@@ -141,11 +141,40 @@ test("SessionStart preserves the exact base, committed changes are checked, and 
   assert.equal(body.evidence.status, "verified");
   assert.deepEqual(body.evidence.changed, ["src/core.ts", "test/core.test.ts"]);
   assert.equal(body.evidence.verifyPassed, true);
+  assert.deepEqual(body.nextActions, []);
   const hookStatus = inspectAgentHookStatus(repo);
   assert.equal(hookStatus.state, "active");
   assert.equal(hookStatus.evidenceAgent, "codex");
-  manualValidationSession(repo, null, "manual-latest-pointer");
+  const manual = manualValidationSession(repo, null, "manual-latest-pointer");
+  recordValidationEvidence(repo, manual, {
+    schema: "ai-harness/validation-evidence/v1",
+    status: "verified",
+    ok: true,
+    requestedBase: "HEAD",
+    resolvedBase: null,
+    fingerprint: "stale-manual-fingerprint",
+    changed: [],
+    affected: [],
+    checks: [],
+    gaps: [],
+    notes: [],
+    waivers: [],
+    errors: [],
+    createdAt: new Date().toISOString(),
+    runChecksStatus: "verified",
+    verifyPassed: true,
+  });
   assert.equal(inspectAgentHookStatus(repo).state, "active", "manual commands must not hide valid hook evidence");
+  const verify = spawnSync(TSX, [CLI, "verify", "--repo", repo, "--json"], {
+    cwd: repo,
+    encoding: "utf8",
+  });
+  assert.equal(verify.status, 0, verify.stderr + verify.stdout);
+  assert.equal(
+    JSON.parse(verify.stdout).messages.some((message: { text: string }) => /manual run-checks evidence/.test(message.text)),
+    false,
+    "a stale manual record must not contradict current lifecycle evidence",
+  );
 
   const hooksPath = join(repo, ".codex", "hooks.json");
   const originalHooks = readFileSync(hooksPath, "utf8");

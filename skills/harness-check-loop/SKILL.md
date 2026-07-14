@@ -49,6 +49,10 @@ harness-kit 只提供确定性弹药，不替你判断功能对不对：
    - 真属于本次**非目标**的覆盖类 blocking gap（`missing-test-touch` / `module-without-tests` / `unmapped-required-file`），才用 `run-checks --waive <kind> --where <输出中的 scope> --reason <为什么>` 豁免。检查未跑、配置/Git 失败等不能豁免；豁免只绑定当前代码指纹，改代码后必须重新判断。
    修完回第 3 步，直到 `run-checks` 退出码 0。
 5. **交付**：用 `harness-kit evidence --repo .` 复核最终证据；手动流程里只有 `runChecksValid:true` 仍不完整，必须看到匹配的 `verifyPassed:true` 与整体 `valid:true`。若显示 `stale`，说明留证后代码又变了，回到第 3 步。只有两道门禁都绿了才算完；把改了什么、补了哪些用例、豁免了什么及原因写进交付说明。
+   - 同时读取 `verify` / `evidence` 的 `NEXT ACTIONS`（JSON 为 `nextActions`）。所有 `required | agent` 由你自动完成后再交付；`required | human` 只请求一个明确授权，不能让用户自己解释 Hook 或选择安装方式。
+   - 若要求安装、修复或证明 lifecycle Hook：识别当前真实客户端和 linked-worktree 形态，安全安装后创建一个新会话，并以 `hookActive:true` 收口。宿主不能创建新会话时，才请用户重开一次。
+   - `recommended` 只在 onboarding / Harness 维护任务处理，不要在无关业务改动里扩大范围；`informational` 是按需验证边界，只有本任务确实涉及发布、真实网络、上传或后台运行时才写进交付说明。
+   - 最终汇报明确写“验证是否通过、Agent 已处理什么、用户还需做什么”；不要只报一个 GAP 总数让用户判断。
 
 ## 拔高正确率的三根杠杆（闭环保证的是一致性，不是"意图全对"——用这些逼近意图）
 

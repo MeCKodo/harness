@@ -104,14 +104,16 @@ program
   .command("doctor")
   .description("dev-time health check: completeness, drift, freshness, tech debt")
   .option("-C, --repo <dir>", "target repo dir (default: current directory)")
-  .action((o) => guard(() => doctorCmd(repoOf(o))));
+  .option("--details", "show every declared verification boundary and maintenance action", false)
+  .action((o) => guard(() => doctorCmd(repoOf(o), { details: o.details })));
 
 program
   .command("verify")
   .description("CI gate: run enforceable invariants + contracts + drift; nonzero on failure")
   .option("-C, --repo <dir>", "target repo dir (default: current directory)")
   .option("--json", "machine-readable output", false)
-  .action((o) => guard(() => verifyCmd(repoOf(o), { json: o.json })));
+  .option("--details", "show every declared verification boundary and maintenance action", false)
+  .action((o) => guard(() => verifyCmd(repoOf(o), { json: o.json, details: o.details })));
 
 program
   .command("plan-checks")

@@ -77,8 +77,13 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || block_infrastructure_fail
 cd "$ROOT" || block_infrastructure_failure
 [ -f .agents/manifest.yaml ] || block_infrastructure_failure
 
-HK="\${HARNESS_KIT_CMD:-npx -y @erzhe/harness-kit@${pkg.version}}"
-output=$($HK hook-event --repo "$ROOT" --agent "$AGENT" --event "$EVENT")
+if [ -n "\${HARNESS_KIT_CMD:-}" ]; then
+  output=$(\$HARNESS_KIT_CMD hook-event --repo "$ROOT" --agent "$AGENT" --event "$EVENT")
+else
+  # Resolve the pinned package outside the target repository. npm otherwise
+  # mistakes a same-named source checkout for the requested published package.
+  output=$(cd "\${TMPDIR:-/tmp}" && npx -y @erzhe/harness-kit@${pkg.version} hook-event --repo "$ROOT" --agent "$AGENT" --event "$EVENT")
+fi
 code=$?
 [ "$code" -eq 0 ] || block_infrastructure_failure
 [ -n "$output" ] && printf '%s\n' "$output"

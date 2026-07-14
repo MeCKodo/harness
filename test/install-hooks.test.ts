@@ -375,6 +375,11 @@ test("install-hooks --stop writes a pinned shared runner + SessionStart/Stop hoo
   const runner = readFileSync(script, "utf8");
   assert.match(runner, /hook-event/);
   assert.match(runner, /@erzhe\/harness-kit@\d+\.\d+\.\d+/);
+  assert.match(
+    runner,
+    /cd "\$\{TMPDIR:-\/tmp\}" && npx -y @erzhe\/harness-kit@\d+\.\d+\.\d+ hook-event/,
+    "the pinned package resolves outside a same-named target repository",
+  );
   assert.ok((statSync(script).mode & 0o100) !== 0, "runner is executable");
 
   const claude = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf8"));

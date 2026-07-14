@@ -97,6 +97,8 @@ dev-time health check: completeness, drift, freshness, tech debt
 
 Options:
   -C, --repo <dir>  target repo dir (default: current directory)
+  --details         show every declared verification boundary and maintenance
+                    action (default: false)
   -h, --help        display help for command
 
 ## verify
@@ -107,6 +109,8 @@ CI gate: run enforceable invariants + contracts + drift; nonzero on failure
 Options:
   -C, --repo <dir>  target repo dir (default: current directory)
   --json            machine-readable output (default: false)
+  --details         show every declared verification boundary and maintenance
+                    action (default: false)
   -h, --help        display help for command
 
 ## plan-checks

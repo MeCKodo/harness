@@ -217,8 +217,8 @@ modules:
     entry: ["src/commands/verify.ts"]
     owns:
       - "src/commands/{accept,doctor,verify}.ts"
-      - "src/{contracts,util}.ts"
-    tests: ["test/contracts.test.ts", "test/state.test.ts", "test/examples.test.ts"]
+      - "src/{contracts,util,guidance}.ts"
+    tests: ["test/contracts.test.ts", "test/state.test.ts", "test/examples.test.ts", "test/guidance.test.ts"]
     checks: ["test", "typecheck"]
     pitfalls:
       - verify --json 对 repo-controlled matcher/文件系统异常也必须只输出一份结构化失败报告
@@ -241,6 +241,7 @@ modules:
     entry: ["package.json"]
     owns:
       - ".agents/**"
+      - ".codex/**"
       - "AGENTS.md"
       - "CLAUDE.md"
       - "README.md"

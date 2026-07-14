@@ -1,0 +1,3 @@
+[features]
+# harness-kit: required for project lifecycle hooks
+hooks = true
