@@ -93,6 +93,11 @@ test("onboard separates analysis from sync and installs only required Agent hook
   assert.match(out, /全新的 Agent 会话/);
   assert.match(out, /evidence.*SessionStart.*Stop.*run-checks \+ verify/);
   assert.match(out, /原生 Git hooks.*可选且仅限确认安全/);
+  assert.match(out, /`required \| agent`.*立即完成/);
+  assert.match(out, /`required \| human`.*明确授权/);
+  assert.match(out, /首次接入.*`recommended`.*逐项判断并尽量完成/);
+  assert.match(out, /install-lifecycle-hooks.*repair-lifecycle-hooks.*prove-lifecycle-hooks/);
+  assert.match(out, /不要把总 GAP 数量单独抛给用户判断/);
 
   const installHookCommands = out
     .split("\n")
@@ -112,4 +117,8 @@ test("check-loop prints the two-gate loop and durable evidence guidance", () => 
   assert.match(out, /run-checks \+ verify/);
   assert.match(out, /harness-kit evidence/);
   assert.match(out, /--where <输出中的 scope>/);
+  assert.match(out, /所有 `required \| agent`.*自动完成/);
+  assert.match(out, /`required \| human`.*明确授权/);
+  assert.match(out, /hookActive:true/);
+  assert.match(out, /不要只报一个 GAP 总数让用户判断/);
 });

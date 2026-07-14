@@ -1,6 +1,7 @@
 import fg from "fast-glob";
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { buildHarnessGuidance } from "../guidance";
 import { inspectAgentHookStatus } from "../hook-status";
 import { loadManifest, validateManifest } from "../manifest";
 import { inspectManagedFiles } from "../managed-files";
@@ -12,7 +13,11 @@ import { err, info, ok, warn } from "../util";
 const AGENTS_MAX_LINES = 150;
 const AGENTS_MAX_WORDS = 700;
 
-export function doctorCmd(repo: string): number {
+export interface DoctorOpts {
+  details?: boolean;
+}
+
+export function doctorCmd(repo: string, opts: DoctorOpts = {}): number {
   let problems = 0;
   const m = loadManifest(repo);
 
@@ -176,10 +181,22 @@ export function doctorCmd(repo: string): number {
     if (!freshness.length) ok("no knowledge drift");
   }
 
-  info("\n5) Tech debt (manual invariants)");
-  const manual = (m.invariants ?? []).filter((i) => i.manual);
-  if (!manual.length) ok("no manual invariants");
-  else warn(`${manual.length} manual (not machine-enforced): ${manual.map((i) => i.id).join(", ")}`);
+  const declaredGuidance = buildHarnessGuidance({ manifest: m });
+  info("\n5) Declared verification boundaries");
+  if (!declaredGuidance.gapSummary.total) ok("no declared verification boundaries");
+  else {
+    info(
+      `${declaredGuidance.gapSummary.total} declared: ${declaredGuidance.gapSummary.recommended} automation improvement(s), ` +
+        `${declaredGuidance.gapSummary.informational} check(s) only when relevant; these are not health failures`,
+    );
+    if (opts.details) {
+      for (const gap of declaredGuidance.gapDetails) {
+        const text = `[${gap.classification.toUpperCase()}] ${gap.title} — ${gap.when} ${gap.reason}`;
+        if (gap.classification === "recommended") warn(text);
+        else info(text);
+      }
+    } else info("       details: `harness-kit doctor --details`");
+  }
 
   info("\n6) AGENTS.md size budget (must stay short — agents read it every session)");
   const agents = renderAgentsMd(m);
@@ -205,11 +222,32 @@ export function doctorCmd(repo: string): number {
     warn(`DEGRADED — configured: ${configuredAgents}; ${hooks.issues.join("; ")}`);
   }
 
+  const guidance = buildHarnessGuidance({ manifest: m, hooks });
+  const visibleActions = opts.details
+    ? guidance.nextActions
+    : guidance.nextActions.filter((action) => action.priority === "required");
+  info("\nNEXT ACTIONS");
+  if (!visibleActions.length) ok("nothing required now");
+  for (const action of visibleActions) {
+    warn(`[${action.priority.toUpperCase()} | ${action.owner.toUpperCase()}] ${action.title}`);
+    info(`       why: ${action.reason}`);
+    info(`       when: ${action.when}`);
+    for (const command of action.commands) info(`       run: ${command}`);
+    info(`       done when: ${action.completion}`);
+  }
+  const hiddenRecommended = guidance.nextActions.length - visibleActions.length;
+  if (hiddenRecommended > 0)
+    info(`       ${hiddenRecommended} recommended maintenance action(s) hidden; use \`--details\` to view`);
+
   info("");
+  const requiredActions = guidance.nextActions.filter((action) => action.priority === "required");
   if (problems) {
     info(`doctor: ${problems} problem(s) found`);
+    if (requiredActions.length) warn(`Harness readiness: INCOMPLETE (${requiredActions.length} required action(s) above)`);
     return 1;
   }
-  info("doctor: healthy");
+  info("doctor: repository configuration healthy");
+  if (requiredActions.length) warn(`Harness readiness: INCOMPLETE (${requiredActions.length} required action(s) above)`);
+  else ok("Harness readiness: READY");
   return 0;
 }

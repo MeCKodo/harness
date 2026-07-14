@@ -1,11 +1,39 @@
 import { collectChanges, EMPTY_TREE_BASE } from "../git";
-import { agentHookConfigurationFingerprint } from "../hook-status";
+import { buildHarnessGuidance, type HarnessNextAction } from "../guidance";
+import { agentHookConfigurationFingerprint, inspectAgentHookStatus, type AgentHookStatus } from "../hook-status";
 import { readLatestValidationSession, readValidationSession } from "../validation-state";
 import { err, info, ok, warn } from "../util";
 
 export interface EvidenceOpts {
   json?: boolean;
   session?: string;
+}
+
+function safeHookStatus(repo: string): AgentHookStatus {
+  try {
+    return inspectAgentHookStatus(repo);
+  } catch (error) {
+    return {
+      state: "degraded",
+      configuredAgents: [],
+      issues: [`cannot inspect Agent lifecycle hooks: ${(error as Error).message}`],
+    };
+  }
+}
+
+function printNextActions(actions: HarnessNextAction[]): void {
+  info("\nNEXT ACTIONS");
+  if (!actions.length) {
+    ok("nothing required now");
+    return;
+  }
+  for (const action of actions) {
+    warn(`[${action.priority.toUpperCase()} | ${action.owner.toUpperCase()}] ${action.title}`);
+    info(`       why: ${action.reason}`);
+    info(`       when: ${action.when}`);
+    for (const command of action.commands) info(`       run: ${command}`);
+    info(`       done when: ${action.completion}`);
+  }
 }
 
 export function evidenceCmd(repo: string, opts: EvidenceOpts = {}): number {
@@ -16,9 +44,22 @@ export function evidenceCmd(repo: string, opts: EvidenceOpts = {}): number {
     err(`cannot read validation evidence: ${(error as Error).message}`);
     return 1;
   }
+  const hooks = safeHookStatus(repo);
   if (!session?.lastEvidence) {
-    if (opts.json) process.stdout.write(JSON.stringify({ schema: "ai-harness/evidence/v1", found: false }, null, 2) + "\n");
-    else warn("no validation evidence recorded for this worktree/session");
+    const guidance = buildHarnessGuidance({ hooks, evidence: { found: false } });
+    if (opts.json) {
+      process.stdout.write(
+        JSON.stringify(
+          { schema: "ai-harness/evidence/v1", found: false, hooks, nextActions: guidance.nextActions },
+          null,
+          2,
+        ) + "\n",
+      );
+    } else {
+      warn("no validation evidence recorded for this worktree/session");
+      printNextActions(guidance.nextActions.filter((action) => action.priority === "required"));
+      warn(`Harness readiness: INCOMPLETE (${guidance.nextActions.filter((action) => action.priority === "required").length} required action(s) above)`);
+    }
     return 1;
   }
 
@@ -47,7 +88,22 @@ export function evidenceCmd(repo: string, opts: EvidenceOpts = {}): number {
   const hookConfigurationCurrent = session.agent !== "manual" && !!session.hookConfigFingerprint &&
     agentHookConfigurationFingerprint(repo, session.agent) === session.hookConfigFingerprint;
   const hookActive = valid && hookConfigurationCurrent;
-  const result = { ...body, runChecksValid, valid, hookActive, hookConfigurationCurrent, stale, currentFingerprint, refreshError };
+  const guidance = buildHarnessGuidance({
+    hooks,
+    evidence: { found: true, stale, runChecksValid, verifyPassed: evidence.verifyPassed, valid },
+  });
+  const result = {
+    ...body,
+    runChecksValid,
+    valid,
+    hookActive,
+    hookConfigurationCurrent,
+    stale,
+    currentFingerprint,
+    refreshError,
+    hooks,
+    nextActions: guidance.nextActions,
+  };
   if (opts.json) {
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
     return valid ? 0 : 1;
@@ -75,5 +131,9 @@ export function evidenceCmd(repo: string, opts: EvidenceOpts = {}): number {
     info("errors:");
     for (const message of evidence.errors) err(message);
   }
+  const requiredActions = guidance.nextActions.filter((action) => action.priority === "required");
+  printNextActions(requiredActions);
+  if (requiredActions.length) warn(`Harness readiness: INCOMPLETE (${requiredActions.length} required action(s) above)`);
+  else ok("Harness readiness: READY");
   return valid ? 0 : 1;
 }

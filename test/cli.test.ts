@@ -16,6 +16,17 @@ test("run-checks exposes scoped waiver and evidence options", () => {
   assert.match(result.stdout, /--session <token>/);
 });
 
+test("doctor and verify expose an explicit details view without changing JSON mode", () => {
+  const doctor = spawnSync(TSX, [CLI, "doctor", "--help"], { encoding: "utf8" });
+  assert.equal(doctor.status, 0);
+  assert.match(doctor.stdout, /--details/);
+
+  const verify = spawnSync(TSX, [CLI, "verify", "--help"], { encoding: "utf8" });
+  assert.equal(verify.status, 0);
+  assert.match(verify.stdout, /--details/);
+  assert.match(verify.stdout, /--json/);
+});
+
 test("record-context-review exposes an explicit Agent review contract", () => {
   const result = spawnSync(TSX, [CLI, "record-context-review", "--help"], { encoding: "utf8" });
   assert.equal(result.status, 0);

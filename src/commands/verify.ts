@@ -1,6 +1,12 @@
 import { execSync } from "node:child_process";
 import { DEFAULT_COMMAND_TIMEOUT_MS, readBaseline, runCapture } from "../contracts";
 import { runEnforcement } from "../enforce";
+import {
+  buildHarnessGuidance,
+  type HarnessNextAction,
+  type VerificationGapDetail,
+  type VerificationGapSummary,
+} from "../guidance";
 import { inspectAgentHookStatus, type AgentHookStatus } from "../hook-status";
 import { loadManifest, validateManifest, type Manifest } from "../manifest";
 import { inspectManagedFiles } from "../managed-files";
@@ -13,6 +19,7 @@ export interface VerifyOpts {
   budgetMs?: number;
   recordManualEvidence?: boolean;
   json?: boolean;
+  details?: boolean;
 }
 
 interface CheckResult {
@@ -33,6 +40,9 @@ export interface VerifyReport {
   context: ContextFreshnessIssue[];
   hooks: AgentHookStatus;
   gaps: string[];
+  gapDetails: VerificationGapDetail[];
+  gapSummary: VerificationGapSummary;
+  nextActions: HarnessNextAction[];
   messages: VerifyMessage[];
 }
 
@@ -79,6 +89,9 @@ function verifyInternal(repo: string, opts: VerifyOpts): number {
         context: [],
         hooks,
         gaps: [],
+        gapDetails: [],
+        gapSummary: { total: 0, recommended: 0, informational: 0 },
+        nextActions: [],
         messages: [{ level: "error", text: message }],
       };
       process.stdout.write(JSON.stringify(report) + "\n");
@@ -86,11 +99,12 @@ function verifyInternal(repo: string, opts: VerifyOpts): number {
     return 1;
   }
   let failures = 0;
-  const gaps: string[] = [];
   const context: ContextFreshnessIssue[] = [];
   const messages: VerifyMessage[] = [];
   let manifestErrors: string[] = [];
   const hooks = safeInspectAgentHookStatus(repo);
+  const guidance = buildHarnessGuidance({ manifest, hooks });
+  const gaps = guidance.gapDetails.map((gap) => gap.legacyText);
 
   const emit = (level: VerifyMessage["level"], text: string): void => {
     messages.push({ level, text });
@@ -106,7 +120,8 @@ function verifyInternal(repo: string, opts: VerifyOpts): number {
     if (opts.recordManualEvidence !== false) {
       try {
         const marked = markManualVerifyResult(repo, code === 0);
-        if (marked === "stale") emit("warn", "manual run-checks evidence no longer matches this change; rerun run-checks before relying on evidence");
+        if (marked === "stale" && hooks.state !== "active")
+          emit("warn", "manual run-checks evidence no longer matches this change; rerun run-checks before relying on evidence");
       } catch (error) {
         emit("error", `cannot persist manual verify evidence: ${(error as Error).message}`);
         failures++;
@@ -122,6 +137,9 @@ function verifyInternal(repo: string, opts: VerifyOpts): number {
         context,
         hooks,
         gaps,
+        gapDetails: guidance.gapDetails,
+        gapSummary: guidance.gapSummary,
+        nextActions: guidance.nextActions,
         messages,
       };
       process.stdout.write(JSON.stringify(report) + "\n");
@@ -192,7 +210,6 @@ function verifyInternal(repo: string, opts: VerifyOpts): number {
   for (const invariant of manifest.invariants ?? []) {
     if (!withinBudget(`before invariant ${invariant.id}`)) break;
     if (invariant.manual) {
-      gaps.push(`invariant ${invariant.id}: manual, not machine-enforced — ${invariant.rule}`);
       continue;
     }
     if (invariant.enforcement) {
@@ -221,7 +238,7 @@ function verifyInternal(repo: string, opts: VerifyOpts): number {
           `${invariant.id}: check ${result.timedOut ? "timed out / verification budget exhausted" : "failed"} (${invariant.check})`,
         );
       }
-    } else gaps.push(`invariant ${invariant.id}: no enforcement/check declared — ${invariant.rule}`);
+    }
   }
 
   const contracts = manifest.contracts ?? [];
@@ -267,18 +284,6 @@ function verifyInternal(repo: string, opts: VerifyOpts): number {
       if (!withinBudget(`while checking contract ${contract.id}`)) break;
     }
   }
-  for (const contract of contracts)
-    if (!contract.check && !contract.snapshot)
-      gaps.push(
-        `contract ${contract.id}: no automatic check` +
-          (contract.manual_verify ? ` — verify by hand: ${contract.manual_verify}` : ""),
-      );
-
-  for (const [verb, capability] of Object.entries(manifest.capabilities ?? {})) {
-    if (capability.mutating) gaps.push(`capability ${verb} (\`${capability.run}\`): mutating — not run here, verify deliberately`);
-    else if (capability.background) gaps.push(`capability ${verb} (\`${capability.run}\`): long-running — not run in this gate`);
-  }
-
   emit("info", "\n5) Agent lifecycle hooks");
   const configuredAgents = hooks.configuredAgents.length ? hooks.configuredAgents.join(", ") : "none";
   if (hooks.state === "active")
@@ -287,16 +292,50 @@ function verifyInternal(repo: string, opts: VerifyOpts): number {
     emit("warn", `CONFIGURED — ${configuredAgents}; a fresh Agent session has not produced current Stop evidence yet`);
   else emit("warn", `DEGRADED — configured: ${configuredAgents}; ${hooks.issues.join("; ")}`);
 
-  emit("info", "\nGAPS — not verifiable here (report honestly, never fake)");
-  if (!gaps.length) emit("ok", "no declared gaps");
-  else for (const gap of gaps) emit("warn", gap);
+  emit("info", "\n6) Declared verification boundaries");
+  if (!guidance.gapSummary.total) emit("ok", "no declared verification boundaries");
+  else {
+    emit(
+      "info",
+      `${guidance.gapSummary.total} declared: ${guidance.gapSummary.recommended} automation improvement(s), ` +
+        `${guidance.gapSummary.informational} check(s) only when relevant; none changes this verify result`,
+    );
+    if (opts.details) {
+      for (const gap of guidance.gapDetails) {
+        const text = `[${gap.classification.toUpperCase()}] ${gap.title} — ${gap.when} ${gap.reason}`;
+        emit(gap.classification === "recommended" ? "warn" : "info", text);
+      }
+    } else emit("info", "       details: `harness-kit verify --details`");
+  }
+
+  const visibleActions = opts.details
+    ? guidance.nextActions
+    : guidance.nextActions.filter((action) => action.priority === "required");
+  emit("info", "\nNEXT ACTIONS");
+  if (!visibleActions.length) emit("ok", "nothing required now");
+  for (const action of visibleActions) {
+    emit("warn", `[${action.priority.toUpperCase()} | ${action.owner.toUpperCase()}] ${action.title}`);
+    emit("info", `       why: ${action.reason}`);
+    emit("info", `       when: ${action.when}`);
+    for (const command of action.commands) emit("info", `       run: ${command}`);
+    emit("info", `       done when: ${action.completion}`);
+  }
+  const hiddenRecommended = guidance.nextActions.length - visibleActions.length;
+  if (hiddenRecommended > 0)
+    emit("info", `       ${hiddenRecommended} recommended maintenance action(s) hidden; use \`--details\` to view`);
 
   emit("info", "");
+  const requiredActions = guidance.nextActions.filter((action) => action.priority === "required");
   if (failures) {
-    emit("info", `verify: FAILED (${failures} problem(s), ${gaps.length} gap(s))`);
+    emit("info", `verify: FAILED (${failures} problem(s))`);
+    if (requiredActions.length)
+      emit("warn", `Harness readiness: INCOMPLETE (${requiredActions.length} required action(s) above)`);
     return finish(1);
   }
-  emit("info", `verify: OK (${gaps.length} gap(s) — see above)`);
+  emit("info", "verify: OK (all declared gates passed)");
+  if (requiredActions.length)
+    emit("warn", `Harness readiness: INCOMPLETE (${requiredActions.length} required action(s) above)`);
+  else emit("ok", "Harness readiness: READY");
   return finish(0);
 }
 
@@ -323,6 +362,9 @@ export function verifyCmd(repo: string, opts: VerifyOpts = {}): number {
         context: [],
         hooks: safeInspectAgentHookStatus(repo),
         gaps: [],
+        gapDetails: [],
+        gapSummary: { total: 0, recommended: 0, informational: 0 },
+        nextActions: [],
         messages: [{ level: "error", text: message }],
       };
       process.stdout.write(JSON.stringify(report) + "\n");

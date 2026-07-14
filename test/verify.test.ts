@@ -24,6 +24,11 @@ function runVerify(repo: string): { status: number; body: any; stdout: string; s
   return { status: result.status ?? -1, body: JSON.parse(result.stdout), stdout: result.stdout, stderr: result.stderr };
 }
 
+function runVerifyText(repo: string, details = false): { status: number; stdout: string; stderr: string } {
+  const result = spawnSync(TSX, [CLI, "verify", "--repo", repo, ...(details ? ["--details"] : [])], { encoding: "utf8" });
+  return { status: result.status ?? -1, stdout: result.stdout, stderr: result.stderr };
+}
+
 test("verify --json emits one structured document", () => {
   const repo = mkdtempSync(join(tmpdir(), "hk-verify-json-"));
   write(repo, ".agents/manifest.yaml", "spec: ai-harness/v0\nidentity: { name: json, summary: json fixture }\n");
@@ -37,7 +42,50 @@ test("verify --json emits one structured document", () => {
   assert.deepEqual(result.body.context, []);
   assert.equal(result.body.hooks.state, "degraded");
   assert.ok(result.body.hooks.issues.some((issue: string) => /runner|not installed|not configured/.test(issue)));
+  assert.deepEqual(result.body.gapSummary, { total: 0, recommended: 0, informational: 0 });
+  assert.deepEqual(result.body.gapDetails, []);
+  assert.equal(result.body.nextActions[0].id, "install-lifecycle-hooks");
+  assert.equal(result.body.nextActions[0].owner, "agent");
   assert.ok(Array.isArray(result.body.messages));
+});
+
+test("verify collapses on-demand boundaries by default and explains them with --details", () => {
+  const repo = mkdtempSync(join(tmpdir(), "hk-verify-guidance-"));
+  write(
+    repo,
+    ".agents/manifest.yaml",
+    `spec: ai-harness/v0
+identity: { name: guidance, summary: guidance fixture }
+capabilities:
+  release: { run: "npm publish", mutating: true }
+  dev: { run: "vite", background: true }
+invariants:
+  - { id: manual-policy, rule: "review policy", manual: true }
+  - { id: missing-gate, rule: "enforce policy" }
+contracts:
+  - { id: manual-api, kind: api, desc: manual, manual_verify: "exercise real endpoint" }
+  - { id: unchecked-api, kind: api, desc: unchecked }
+`,
+  );
+  syncCmd(repo);
+
+  const compact = runVerifyText(repo);
+  assert.equal(compact.status, 0, compact.stderr + compact.stdout);
+  assert.match(compact.stdout, /6 declared: 2 automation improvement\(s\), 4 check\(s\) only when relevant/);
+  assert.match(compact.stdout, /details: `harness-kit verify --details`/);
+  assert.doesNotMatch(compact.stdout, /Add enforcement for invariant missing-gate/);
+  assert.match(compact.stdout, /Harness readiness: INCOMPLETE/);
+
+  const detailed = runVerifyText(repo, true);
+  assert.equal(detailed.status, 0, detailed.stderr + detailed.stdout);
+  assert.match(detailed.stdout, /\[RECOMMENDED\] Add enforcement for invariant missing-gate/);
+  assert.match(detailed.stdout, /\[INFORMATIONAL\] Run release only when deliberately requested/);
+  assert.match(detailed.stdout, /\[RECOMMENDED \| AGENT\] Improve 2 verification declaration\(s\)/);
+
+  const json = runVerify(repo).body;
+  assert.deepEqual(json.gapSummary, { total: 6, recommended: 2, informational: 4 });
+  assert.equal(json.gaps.length, 6, "legacy flat gaps remain available");
+  assert.equal(json.gapDetails.find((gap: any) => gap.scope === "release").classification, "informational");
 });
 
 test("unknown manifest spec fails closed in verify JSON", () => {

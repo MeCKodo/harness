@@ -111,8 +111,8 @@
 
 ## core-gates — init/sync/doctor/verify/contract/enforcement 的通用基础
 - Entry: `src/commands/verify.ts`
-- Owns (prod): `src/commands/{accept,doctor,verify}.ts`, `src/{contracts,util}.ts`
-- Tests: `test/contracts.test.ts`, `test/state.test.ts`, `test/examples.test.ts`
+- Owns (prod): `src/commands/{accept,doctor,verify}.ts`, `src/{contracts,util,guidance}.ts`
+- Tests: `test/contracts.test.ts`, `test/state.test.ts`, `test/examples.test.ts`, `test/guidance.test.ts`
 - Checks: `test`, `typecheck`
 - Pitfall: verify --json 对 repo-controlled matcher/文件系统异常也必须只输出一份结构化失败报告
 - Pitfall: accept-contract 必须先校验 manifest，基线只能写 .agents/contracts 的安全普通文件
@@ -132,7 +132,7 @@
 
 ## repository-assets — 包元数据、生成状态、项目文档与本仓维护配置
 - Entry: `package.json`
-- Owns (prod): `.agents/**`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `docs/**`, `.gitignore`, `package.json`, `pnpm-lock.yaml`
+- Owns (prod): `.agents/**`, `.codex/**`, `AGENTS.md`, `CLAUDE.md`, `README.md`, `docs/**`, `.gitignore`, `package.json`, `pnpm-lock.yaml`
 - Tests: `test/**`
 - Checks: `test`, `typecheck`
 - Pitfall: package 声明 Node >=18，runtime 依赖不得偷偷抬高版本下限；发布包要用真实 Node 18 跑 CLI smoke

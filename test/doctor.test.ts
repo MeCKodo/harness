@@ -56,6 +56,35 @@ invariants:
   assert.match(result.output, /knowledge: engineering\/handbook\/api\.md/);
   assert.doesNotMatch(result.output, /passes without checking anything/);
   assert.match(result.output, /Agent lifecycle hooks[\s\S]*DEGRADED/);
+  assert.match(result.output, /NEXT ACTIONS[\s\S]*\[REQUIRED \| AGENT\] Install the Agent lifecycle Hook/);
+  assert.match(result.output, /doctor: repository configuration healthy/);
+  assert.match(result.output, /Harness readiness: INCOMPLETE/);
+});
+
+test("doctor keeps informational boundaries compact and expands maintenance work on request", () => {
+  const repo = mkdtempSync(join(tmpdir(), "hk-doctor-guidance-"));
+  write(
+    repo,
+    ".agents/manifest.yaml",
+    `spec: ai-harness/v0
+identity: { name: doctor-guidance, summary: doctor guidance fixture }
+invariants:
+  - { id: manual-policy, rule: "review policy", manual: true }
+  - { id: missing-gate, rule: "enforce policy" }
+`,
+  );
+  syncCmd(repo);
+
+  const compact = capture(() => doctorCmd(repo));
+  assert.equal(compact.code, 0, compact.output);
+  assert.match(compact.output, /2 declared: 1 automation improvement\(s\), 1 check\(s\) only when relevant/);
+  assert.doesNotMatch(compact.output, /Add enforcement for invariant missing-gate/);
+
+  const detailed = capture(() => doctorCmd(repo, { details: true }));
+  assert.equal(detailed.code, 0, detailed.output);
+  assert.match(detailed.output, /\[RECOMMENDED\] Add enforcement for invariant missing-gate/);
+  assert.match(detailed.output, /\[INFORMATIONAL\] Review invariant manual-policy when relevant/);
+  assert.match(detailed.output, /\[RECOMMENDED \| AGENT\] Improve 1 verification declaration\(s\)/);
 });
 
 test("explicit authority is blocking until record-context-review is recorded", () => {
