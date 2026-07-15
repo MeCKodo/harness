@@ -1,7 +1,7 @@
 # AI-Harness SPEC v0.4
 
 > 一套 AI-friendly 的仓库规范。定义"任何仓库要让 Agent 冷启动即可高效工作、且人人构建出一致范式，必须声明什么、怎么声明、怎么防过期"。
-> 配套 CLI：`ai-harness`（`init` / `sync` / `doctor` / `verify`）。基础仓继续兼容 `ai-harness/v0`；使用 validation gates 的仓必须显式升级到 `ai-harness/v1`。
+> 配套 CLI：`ai-harness`（`init` / `sync` / `upgrade` / `doctor` / `verify`）。基础仓继续兼容 `ai-harness/v0`；使用 validation gates 的仓必须显式升级到 `ai-harness/v1`。
 >
 > 本文件是随仓库与 npm 包公开分发的规范正文。
 >
@@ -194,8 +194,10 @@ generate:
 - `manifest.yaml` 是生成结构的真相源；`.agents/knowledge/` 及 `root: repo` 登记的业务文档仍是手写语义源。
 - `harness sync` 幂等渲染工具文件，先对**全部目标**做安全 preflight，再写同目录临时文件。缺失目标用 hard-link no-replace 安装；已有普通文件先移到唯一 rollback 位并再次核对 identity/bytes，再 no-replace 安装候选。中途失败尽力恢复；若同时有别的进程写入，优先保留较新的路径和原文件 backup、明确失败，绝不静默覆盖。跨平台 Node 没有“比较 inode 后原子替换”的 CAS，因此普通文件替换存在极短路径空窗；这里承诺的是数据保全的 best-effort 文件事务，不冒充数据库级原子性。已完全一致的普通文件不得无谓重写。
 - 最终路径及其父目录不能跟随 symlink。唯一允许保留的语义 alias 是仓库根的相对 `CLAUDE.md -> AGENTS.md`，且解析后必须精确落在同仓 `AGENTS.md`；其它 symlink、目录、越界父目录全部 fail closed。
-- `init` 先统一预检 manifest、domain、conventions、journal/playbooks `.gitkeep` 和 adoption log；非 `--force` 时任一 scaffold 目标已存在就必须零写入拒绝。首次接管已有普通入口文件前，`init` 仅对 Harness 将接管的 managed entry 保存逐字节 legacy snapshot、mode/hash（symlink 保存 link target）。snapshot/index 的父链必须是仓内真实目录，读取使用 no-follow，snapshot 用排他 no-replace 写，index 用绑定旧字节的事务写；索引提交失败时初始化整体失败，已安全落下的 append-only snapshot 原位保留并在错误中给出恢复路径，绝不冒险删除可能被并发改写的 inode。嵌套 `AGENTS.md` / `CLAUDE.md` 及它们递归显式引用的仓内文本文档始终留在原地，不写入仓内 `.agents/adoption/legacy`；`prepare-adoption` 才把这些 guidance 复制到仓外私有 bundle，不按业务目录名猜测（Git 不可用时仍完整扫描，VCS 元数据与 Harness 自身 adoption evidence 除外）。guidance path/type/bytes/hash/mode/link target 纳入 candidate 绑定并在 apply 时重新发现、逐项重验；缺失、二进制、越界或指向仓外的 symlink 引用 fail closed，普通代码/资产链接与 Markdown 图片不当作 guidance。普通 `sync` 必须拒绝覆盖；`prepare-adoption` 不写真实入口。盲审报告经 `record-adoption-audit` 形成 `assurance=declared / independence=unverified` 的 pass/fail receipt；它证明被声明审查的是哪些字节，不证明审计身份或语义质量。只有带精确 candidate+pass receipt 的 `sync --adopt-existing` 才会在同次写入 preflight 里重新核对 live legacy、snapshot/index、guidance、manifest、所有候选字节及报告 hash。任一漂移都拒绝，`--force` 不能绕过。
+- `init` 先统一预检 manifest、`.agents/harness.lock.json`、domain、conventions、journal/playbooks `.gitkeep` 和 adoption log；非 `--force` 时任一 scaffold 目标已存在就必须零写入拒绝。首次接管已有普通入口文件前，`init` 仅对 Harness 将接管的 managed entry 保存逐字节 legacy snapshot、mode/hash（symlink 保存 link target）。snapshot/index 的父链必须是仓内真实目录，读取使用 no-follow，snapshot 用排他 no-replace 写，index 用绑定旧字节的事务写；索引提交失败时初始化整体失败，已安全落下的 append-only snapshot 原位保留并在错误中给出恢复路径，绝不冒险删除可能被并发改写的 inode。嵌套 `AGENTS.md` / `CLAUDE.md` 及它们递归显式引用的仓内文本文档始终留在原地，不写入仓内 `.agents/adoption/legacy`；`prepare-adoption` 才把这些 guidance 复制到仓外私有 bundle，不按业务目录名猜测（Git 不可用时仍完整扫描，VCS 元数据与 Harness 自身 adoption evidence 除外）。guidance path/type/bytes/hash/mode/link target 纳入 candidate 绑定并在 apply 时重新发现、逐项重验；缺失、二进制、越界或指向仓外的 symlink 引用 fail closed，普通代码/资产链接与 Markdown 图片不当作 guidance。普通 `sync` 必须拒绝覆盖；`prepare-adoption` 不写真实入口。盲审报告经 `record-adoption-audit` 形成 `assurance=declared / independence=unverified` 的 pass/fail receipt；它证明被声明审查的是哪些字节，不证明审计身份或语义质量。只有带精确 candidate+pass receipt 的 `sync --adopt-existing` 才会在同次写入 preflight 里重新核对 live legacy、snapshot/index、guidance、manifest、所有候选字节及报告 hash。任一漂移都拒绝，`--force` 不能绕过。
 - `sync` **只生成确定性文件**，绝不写新鲜度 baseline 或自动“接受”知识。语义复核只能由 Agent 完成分析后显式调用 `record-context-review`。
+- `upgrade` 以当前运行 CLI 的版本为迁移目标，不自行访问 registry、CI 或代码托管平台。`.agents/harness.lock.json` 只记录确定性的 package/version、manifest spec 与有序 migration IDs，不含时间戳或 Agent 清单。`--check` 只读（current=0、available=2、blocked=1）；apply 要求目标 Git scope 干净，先在内存执行有序的必需结构迁移并验证最终 manifest，再把确有语义变化的 manifest、全部生成入口和 lock 交给同一个 managed-file 事务。只解析未迁移时必须保留 manifest 原始字节。可选产品能力不能自动开启。0.5.1 的 upgrade 不修改 lifecycle Hook；Hook 继续由 `install-hooks` 显式管理。
+- upgrade state 协议是 `ai-harness/upgrade-state/v1`：`{ schema, package, version, manifestSpec, appliedMigrations }`。JSON 命令协议是单份 `ai-harness/upgrade-report/v1`：`status` 取 `current | upgrade-available | upgraded | incomplete | blocked`，并携带 from/to version、pending/applied migrations、changed/dirty files、`hooksChanged`、errors/notes，以及 apply 后可选的 doctor/verify 结果。结构迁移已写入但后置校验失败时必须报告 `incomplete` 和非零退出，不能把已落盘事实伪装成零写入失败。
 - 生成文件不进人工编辑；要改结构就改 manifest 再 sync。已有业务文档不搬入 `.agents/`，仍在原路径维护。
 
 ## 5. 校验契约（`doctor` / `verify`）
@@ -251,6 +253,7 @@ GAPS 不计入失败，但会打印数量（`verify: OK (N gap(s))`）。配套*
 | `harness prepare-adoption --out <external-dir>` | 在仓库外生成私有 legacy+candidate 审计 bundle，不修改真实入口 |
 | `harness record-adoption-audit --candidate <dir> --verdict pass\|fail --report <file> --reason <text> [--out]` | 生成内容绑定的声明式审计回执；不证明身份或语义质量 |
 | `harness sync [--adopt-existing --candidate <dir> --audit <receipt>]` | 事务生成工具文件；首次接管要求精确 pass receipt 且应用瞬间重新渲染核对；不刷新 context review |
+| `harness upgrade [--check] [--json]` | 升级到当前 CLI 版本；平台无关的确定性迁移、生成物刷新和 doctor/verify；不修改 Hook |
 | `harness doctor` | 开发期体检：完整性 + 漂移 + 新鲜度 + 技术债 + 影响面 owns 空匹配 / playbook 存在性 |
 | `harness verify [--json]` | 本地/CI 门禁：跑全部可执行 checks，任一失败即 fail；JSON 为单文档稳定协议 |
 | `harness accept-contract [--id]` | 把当前契约指纹记为已接受基线（有意变更后显式跑，与 sync 分开） |

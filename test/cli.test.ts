@@ -8,6 +8,9 @@ import { fileURLToPath } from "node:url";
 
 const CLI = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
 const TSX = fileURLToPath(new URL("../node_modules/.bin/tsx", import.meta.url));
+const PACKAGE_VERSION = (JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as {
+  version: string;
+}).version;
 
 test("run-checks exposes scoped waiver and evidence options", () => {
   const result = spawnSync(TSX, [CLI, "run-checks", "--help"], { encoding: "utf8" });
@@ -25,6 +28,13 @@ test("doctor and verify expose an explicit details view without changing JSON mo
   assert.equal(verify.status, 0);
   assert.match(verify.stdout, /--details/);
   assert.match(verify.stdout, /--json/);
+});
+
+test("upgrade exposes read-only and machine-readable modes", () => {
+  const result = spawnSync(TSX, [CLI, "upgrade", "--help"], { encoding: "utf8" });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /--check/);
+  assert.match(result.stdout, /--json/);
 });
 
 test("record-context-review exposes an explicit Agent review contract", () => {
@@ -77,6 +87,7 @@ test("init refusal is a real nonzero failure, not a successful-looking error", (
 test("init preflights every scaffold target and refuses with zero writes", () => {
   const scaffold = [
     ".agents/manifest.yaml",
+    ".agents/harness.lock.json",
     ".agents/knowledge/domain.md",
     ".agents/knowledge/conventions.md",
     ".agents/knowledge/journal/.gitkeep",
@@ -107,6 +118,13 @@ test("init --force still snapshots legacy entry bytes before replacing scaffold 
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.equal(readFileSync(join(repo, ".agents/adoption/legacy/AGENTS.md.pre-harness"), "utf8"), "# Existing project rules\n");
   assert.match(readFileSync(join(repo, ".agents/knowledge/domain.md"), "utf8"), /forced — domain/);
+  assert.deepEqual(JSON.parse(readFileSync(join(repo, ".agents/harness.lock.json"), "utf8")), {
+    schema: "ai-harness/upgrade-state/v1",
+    package: "@erzhe/harness-kit",
+    version: PACKAGE_VERSION,
+    manifestSpec: "ai-harness/v0",
+    appliedMigrations: ["upgrade-state-v1"],
+  });
 });
 
 test("the real CLI blocks an implicit manual no-change result", () => {

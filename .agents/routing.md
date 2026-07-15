@@ -34,6 +34,15 @@ Find the change-type that matches your task and follow that row before editing.
 - Do NOT assume: sync 只生成确定性文件，不能刷新 context review
 - Minimum verification: `test`, `typecheck`
 
+## 改 Harness 版本升级规则 / 状态迁移
+- Read first: `src/upgrade.ts`, `src/commands/upgrade.ts`, `src/managed-files.ts`, `src/commands/doctor.ts`, `src/commands/verify.ts`
+- Entry points: `src/upgrade.ts`, `src/commands/upgrade.ts`
+- Do NOT assume: upgrade 以当前运行 CLI 版本为目标，不访问 npm、CI 或代码托管平台
+- Do NOT assume: 迁移状态必须确定、可提交且不记录时间戳或 Agent 名单
+- Do NOT assume: upgrade 的仓内文件共用一次事务；Hook 横跨仓库、Git admin 和用户目录，必须留给 install-hooks 显式处理
+- Do NOT assume: 可选产品能力不能伪装成所有仓库必跑的结构迁移
+- Minimum verification: `test`, `typecheck`
+
 ## 改知识新鲜度 / Agent 复核
 - Read first: `src/state.ts`, `src/commands/record-context-review.ts`, `SPEC-v0.md`
 - Entry points: `src/state.ts`

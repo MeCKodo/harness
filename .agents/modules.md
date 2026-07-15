@@ -89,7 +89,7 @@
 ## managed-generation — 生成文件接管、软链接边界与事务写入
 - Entry: `src/managed-files.ts`
 - Owns (prod): `src/managed-files.ts`, `src/adoption.ts`, `src/commands/{init,prepare-adoption,record-adoption-audit,sync}.ts`
-- Tests: `test/managed-files.test.ts`, `test/adoption.test.ts`
+- Tests: `test/managed-files.test.ts`, `test/adoption.test.ts`, `test/cli.test.ts`
 - Checks: `test`, `typecheck`
 - Test touch: `required`
 - Pitfall: 接管授权必须在同一次 preflight 上完成，不能先 inspect 再另一次 write 留 TOCTOU 缝隙
@@ -98,6 +98,17 @@
 - Pitfall: guidance 普通文件必须走仓库范围的 O_NOFOLLOW + inode 绑定读取；不能 lstat 后直接按路径 read 留软链接替换窗口
 - Pitfall: declared/unverified 不能命名成 verified；本地 hash 没有外部身份信任根
 - Pitfall: sync 不得写 .agents/.harness-state.json；语义新鲜度只由 record-context-review 推进
+
+## repository-upgrade — 平台无关的版本迁移规划、确定性状态与事务应用
+- Entry: `src/upgrade.ts`, `src/commands/upgrade.ts`
+- Owns (prod): `src/upgrade.ts`, `src/commands/upgrade.ts`
+- Tests: `test/upgrade.test.ts`
+- Checks: `test`, `typecheck`
+- Test touch: `required`
+- Pitfall: 运行中的 CLI 版本就是目标版本；core 不能访问 registry、CI 或代码托管 API
+- Pitfall: apply 必须拒绝 dirty 仓库，并把 manifest、生成入口和 lock 放入同一次 managed-file 事务
+- Pitfall: 只解析而没有迁移时必须保留 manifest 原始字节，不能顺手格式化
+- Pitfall: Hook 不属于仓内原子事务；当前 upgrade 不得安装、卸载或刷新 Hook
 
 ## context-freshness — 任意 repo 文档登记、authority 语义与 Agent review evidence
 - Entry: `src/state.ts`

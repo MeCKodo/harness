@@ -6,6 +6,7 @@ const commands = [
   "prepare-adoption",
   "record-adoption-audit",
   "sync",
+  "upgrade",
   "doctor",
   "verify",
   "plan-checks",

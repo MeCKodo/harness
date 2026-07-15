@@ -4,7 +4,7 @@ identity:
   name: ai-harness
   summary: AI-friendly repo harness CLI —— 把工程知识变成 agent 可消费的 manifest，生成各工具文件并用门禁保证一致
   scope_in:
-    - CLI 命令 init / prepare-adoption / record-adoption-audit / sync / doctor / verify / accept-contract / install-hooks / onboard / plan-checks / run-checks / evidence / record-context-review / check-loop（src/）
+    - CLI 命令 init / prepare-adoption / record-adoption-audit / sync / upgrade / doctor / verify / accept-contract / install-hooks / onboard / plan-checks / run-checks / evidence / record-context-review / check-loop（src/）
     - manifest schema + 生成器 + 声明式不变量执行 + 派生新鲜度 + 影响面 planner
   scope_out:
     - 目标仓库自身的业务代码（本工具只读它们的 .agents/manifest.yaml）
@@ -78,6 +78,15 @@ routing:
       - adoption index/snapshot 父链禁 symlink、no-follow/no-replace；index 失败时保留 append-only snapshot 供恢复，不能删掉可能已并发改写的 inode
       - 只有 CLAUDE.md -> AGENTS.md 相对软链接可保留
       - sync 只生成确定性文件，不能刷新 context review
+    verify: ["test", "typecheck"]
+  - when: 改 Harness 版本升级规则 / 状态迁移
+    read: ["src/upgrade.ts", "src/commands/upgrade.ts", "src/managed-files.ts", "src/commands/doctor.ts", "src/commands/verify.ts"]
+    entry: ["src/upgrade.ts", "src/commands/upgrade.ts"]
+    dont_assume:
+      - upgrade 以当前运行 CLI 版本为目标，不访问 npm、CI 或代码托管平台
+      - 迁移状态必须确定、可提交且不记录时间戳或 Agent 名单
+      - upgrade 的仓内文件共用一次事务；Hook 横跨仓库、Git admin 和用户目录，必须留给 install-hooks 显式处理
+      - 可选产品能力不能伪装成所有仓库必跑的结构迁移
     verify: ["test", "typecheck"]
   - when: 改知识新鲜度 / Agent 复核
     read: ["src/state.ts", "src/commands/record-context-review.ts", "SPEC-v0.md"]
@@ -191,7 +200,7 @@ modules:
     role: 生成文件接管、软链接边界与事务写入
     entry: ["src/managed-files.ts"]
     owns: ["src/managed-files.ts", "src/adoption.ts", "src/commands/{init,prepare-adoption,record-adoption-audit,sync}.ts"]
-    tests: ["test/managed-files.test.ts", "test/adoption.test.ts"]
+    tests: ["test/managed-files.test.ts", "test/adoption.test.ts", "test/cli.test.ts"]
     checks: ["test", "typecheck"]
     test_touch: required
     pitfalls:
@@ -201,6 +210,18 @@ modules:
       - guidance 普通文件必须走仓库范围的 O_NOFOLLOW + inode 绑定读取；不能 lstat 后直接按路径 read 留软链接替换窗口
       - declared/unverified 不能命名成 verified；本地 hash 没有外部身份信任根
       - sync 不得写 .agents/.harness-state.json；语义新鲜度只由 record-context-review 推进
+  - name: repository-upgrade
+    role: 平台无关的版本迁移规划、确定性状态与事务应用
+    entry: ["src/upgrade.ts", "src/commands/upgrade.ts"]
+    owns: ["src/upgrade.ts", "src/commands/upgrade.ts"]
+    tests: ["test/upgrade.test.ts"]
+    checks: ["test", "typecheck"]
+    test_touch: required
+    pitfalls:
+      - 运行中的 CLI 版本就是目标版本；core 不能访问 registry、CI 或代码托管 API
+      - apply 必须拒绝 dirty 仓库，并把 manifest、生成入口和 lock 放入同一次 managed-file 事务
+      - 只解析而没有迁移时必须保留 manifest 原始字节，不能顺手格式化
+      - Hook 不属于仓内原子事务；当前 upgrade 不得安装、卸载或刷新 Hook
   - name: context-freshness
     role: 任意 repo 文档登记、authority 语义与 Agent review evidence
     entry: ["src/state.ts"]

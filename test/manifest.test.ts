@@ -37,6 +37,19 @@ test("the repository impact map owns project-level Codex lifecycle configuration
   assert.ok(module.owns?.includes(".codex/**"));
 });
 
+test("the repository impact map keeps platform-neutral upgrades in one focused module", () => {
+  const module = loadManifest(REPO).modules?.find((item) => item.name === "repository-upgrade");
+  assert.ok(module);
+  assert.deepEqual(module.entry, ["src/upgrade.ts", "src/commands/upgrade.ts"]);
+  assert.deepEqual(module.owns, ["src/upgrade.ts", "src/commands/upgrade.ts"]);
+  assert.deepEqual(module.tests, ["test/upgrade.test.ts"]);
+  assert.ok(module.pitfalls?.some((pitfall) => /不能访问 registry、CI 或代码托管 API/.test(pitfall)));
+  assert.ok(module.pitfalls?.some((pitfall) => /当前 upgrade 不得安装、卸载或刷新 Hook/.test(pitfall)));
+
+  const managed = loadManifest(REPO).modules?.find((item) => item.name === "managed-generation");
+  assert.ok(managed?.tests?.includes("test/cli.test.ts"));
+});
+
 test("an unknown manifest spec is rejected instead of being interpreted as v0", () => {
   const m: Manifest = { spec: "ai-harness/v999", identity: { name: "x", summary: "s" } };
   const errors = validateManifest(m)
