@@ -1,0 +1,17 @@
+{
+  "name": "desktop-notes-harness-example",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "electron/main/index.cjs",
+  "scripts": {
+    "dev": "electron electron/main/index.cjs",
+    "test:unit": "node --test",
+    "test:e2e:renderer": "playwright test --config playwright.renderer.config.mjs",
+    "test:e2e:electron": "playwright test --config playwright.electron.config.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1",
+    "electron": "^33.2.1"
+  }
+}

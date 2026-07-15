@@ -71,6 +71,13 @@ test("onboard requires executable impact coverage without invented globs", () =>
   assert.match(out, /正向 glob 写入前都要对仓库文件清单实际求值并确认命中/);
   assert.match(out, /不得套用惯例路径、发明 glob/);
   assert.match(out, /亲自验证可运行的 capability 动词/);
+  assert.match(out, /用户可观察.*验证面审计/);
+  assert.match(out, /`validation\.gates`.*`modules\[\]\.gates`/);
+  assert.match(out, /spec: ai-harness\/v1.*旧 CLI fail closed/);
+  assert.match(out, /已有.*E2E.*不能只放在.*routing\.verify.*profile/);
+  assert.match(out, /unit test.*不能满足.*acceptance/i);
+  assert.match(out, /没有真实.*E2E.*不得发明/);
+  assert.match(out, /invariants\[\]\.manual: true.*playbook\/pitfall/);
 });
 
 test("onboard separates analysis from sync and installs only required Agent hooks", () => {
@@ -120,5 +127,8 @@ test("check-loop prints the two-gate loop and durable evidence guidance", () => 
   assert.match(out, /所有 `required \| agent`.*自动完成/);
   assert.match(out, /`required \| human`.*明确授权/);
   assert.match(out, /hookActive:true/);
+  assert.match(out, /validation gate.*profile.*不能绕过/i);
+  assert.match(out, /gate:.*acceptance.*unit/i);
+  assert.match(out, /validation-gate-invalid.*不可豁免/);
   assert.match(out, /不要只报一个 GAP 总数让用户判断/);
 });

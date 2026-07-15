@@ -197,3 +197,110 @@ test("propagation-note is emitted whenever a module is affected", () => {
   assert.ok(p.notes.some((n) => n.kind === "propagation-note"));
   assert.ok(!p.gaps.some((g) => g.kind === "propagation-note"));
 });
+
+test("a module validation gate adds its check and requires its own acceptance test touch", () => {
+  const manifest = {
+    spec: "ai-harness/v1",
+    identity: { name: "desktop", summary: "desktop app" },
+    capabilities: { unit: { run: "unit" }, "desktop-e2e": { run: "e2e" } },
+    modules: [
+      {
+        name: "renderer",
+        role: "renderer UI",
+        entry: ["src/renderer/index.ts"],
+        owns: ["src/renderer/**"],
+        tests: ["test/unit/**"],
+        checks: ["unit"],
+        test_touch: "required",
+        gates: ["desktop-user-flow"],
+      },
+    ],
+    validation: {
+      gates: {
+        "desktop-user-flow": {
+          checks: ["desktop-e2e"],
+          acceptance: { tests: ["e2e/desktop/**"], test_touch: "required" },
+        },
+      },
+    },
+  } as unknown as Manifest;
+
+  const unitOnly = planChecks(manifest, ["src/renderer/page.tsx", "test/unit/page.test.tsx"]);
+  assert.ok(unitOnly.checks.some((check) => check.id === "desktop-e2e" && check.reason === "gate:desktop-user-flow"));
+  assert.deepEqual((unitOnly as unknown as { gates: string[] }).gates, ["desktop-user-flow"]);
+  assert.equal(
+    unitOnly.gaps.find((gap) => gap.kind === "missing-test-touch" && gap.where === "gate:desktop-user-flow")?.severity,
+    "blocking",
+  );
+
+  const accepted = planChecks(manifest, [
+    "src/renderer/page.tsx",
+    "test/unit/page.test.tsx",
+    "e2e/desktop/page.spec.ts",
+  ]);
+  assert.ok(!accepted.gaps.some((gap) => gap.kind === "missing-test-touch" && gap.where === "gate:desktop-user-flow"));
+});
+
+test("validation gates cannot be bypassed by a profile and gate test-only changes stay mapped", () => {
+  const manifest = {
+    spec: "ai-harness/v1",
+    identity: { name: "desktop", summary: "desktop app" },
+    capabilities: { unit: { run: "unit" }, "desktop-e2e": { run: "e2e" } },
+    modules: [
+      {
+        name: "renderer",
+        role: "renderer UI",
+        entry: ["src/renderer/index.ts"],
+        owns: ["src/renderer/**"],
+        checks: ["unit"],
+        gates: ["desktop-user-flow"],
+      },
+    ],
+    validation: {
+      gates: {
+        "desktop-user-flow": {
+          checks: ["desktop-e2e"],
+          acceptance: { tests: ["e2e/desktop/**"], test_touch: "off" },
+        },
+      },
+      checksets: { fast: { checks: ["unit"] } },
+    },
+  } as unknown as Manifest;
+
+  const profiled = planChecks(manifest, ["src/renderer/page.tsx"], { profile: "fast" });
+  assert.ok(profiled.checks.some((check) => check.id === "desktop-e2e" && check.reason === "gate:desktop-user-flow"));
+
+  const testOnly = planChecks(manifest, ["e2e/desktop/page.spec.ts"]);
+  assert.deepEqual((testOnly as unknown as { gates: string[] }).gates, ["desktop-user-flow"]);
+  assert.ok(testOnly.checks.some((check) => check.id === "desktop-e2e"));
+  assert.ok(!testOnly.gaps.some((gap) => gap.kind === "unmapped-file"));
+});
+
+test("a unit or production file matched by an over-broad acceptance glob cannot satisfy gate touch", () => {
+  const manifest = {
+    spec: "ai-harness/v1",
+    identity: { name: "desktop", summary: "desktop app" },
+    capabilities: { unit: { run: "unit" }, e2e: { run: "e2e" } },
+    modules: [
+      {
+        name: "renderer",
+        role: "renderer",
+        entry: ["src/page.ts"],
+        owns: ["src/**"],
+        tests: ["test/**"],
+        checks: ["unit"],
+        gates: ["flow"],
+      },
+    ],
+    validation: {
+      gates: {
+        flow: { checks: ["e2e"], acceptance: { tests: ["{src,test,e2e}/**"], test_touch: "required" } },
+      },
+    },
+  } as unknown as Manifest;
+
+  const unitOverlap = planChecks(manifest, ["src/page.ts", "test/page.test.ts"]);
+  assert.ok(unitOverlap.gaps.some((gap) => gap.kind === "missing-test-touch" && gap.where === "gate:flow"));
+  const realAcceptance = planChecks(manifest, ["src/page.ts", "test/page.test.ts", "e2e/page.spec.ts"]);
+  assert.ok(!realAcceptance.gaps.some((gap) => gap.kind === "missing-test-touch" && gap.where === "gate:flow"));
+});

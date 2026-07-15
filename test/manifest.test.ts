@@ -45,9 +45,22 @@ test("an unknown manifest spec is rejected instead of being interpreted as v0", 
   assert.ok(errors.some((message) => /不支持.*ai-harness\/v999.*ai-harness\/v0/.test(message)));
 });
 
+test("validation gates require v1 so older CLIs reject them instead of silently running unit-only", () => {
+  const m = {
+    spec: "ai-harness/v0",
+    identity: { name: "legacy", summary: "legacy spec" },
+    capabilities: { e2e: { run: "pnpm e2e" } },
+    modules: [{ name: "ui", role: "ui", entry: ["src/ui.ts"], owns: ["src/**"], gates: ["flow"] }],
+    validation: { gates: { flow: { checks: ["e2e"] } } },
+  } as unknown as Manifest;
+
+  const errors = validateManifest(m).filter((issue) => issue.level === "error").map((issue) => issue.msg);
+  assert.ok(errors.some((message) => /需要 spec: ai-harness\/v1.*旧版 CLI fail closed/.test(message)));
+});
+
 test("contract ids are restricted to portable filename characters", () => {
   const m: Manifest = {
-    spec: "ai-harness/v0",
+    spec: "ai-harness/v1",
     identity: { name: "x", summary: "s" },
     contracts: [
       { id: "../../../escape", kind: "api", desc: "escape" },
@@ -66,7 +79,7 @@ test("contract ids are restricted to portable filename characters", () => {
 
 test("contract ids are unique after ASCII case-folding", () => {
   const m: Manifest = {
-    spec: "ai-harness/v0",
+    spec: "ai-harness/v1",
     identity: { name: "x", summary: "s" },
     contracts: [
       { id: "API", kind: "api", desc: "upper" },
@@ -317,4 +330,100 @@ test("module.name must be a non-empty string", () => {
     .filter((issue) => issue.level === "error")
     .map((issue) => issue.msg);
   assert.ok(errors.some((message) => /module\.name.*字符串/.test(message)));
+});
+
+test("project-defined validation gates bind runnable checks and isolated acceptance tests to modules", () => {
+  const m = {
+    spec: "ai-harness/v1",
+    identity: { name: "desktop", summary: "desktop app" },
+    capabilities: {
+      unit: { run: "pnpm test:unit" },
+      "desktop-e2e": { run: "pnpm test:e2e" },
+    },
+    modules: [
+      {
+        name: "renderer",
+        role: "renderer UI",
+        entry: ["src/renderer.ts"],
+        owns: ["src/renderer/**"],
+        tests: ["test/unit/**"],
+        checks: ["unit"],
+        gates: ["desktop-user-flow"],
+      },
+    ],
+    validation: {
+      gates: {
+        "desktop-user-flow": {
+          desc: "exercise the real desktop boundary",
+          checks: ["desktop-e2e"],
+          acceptance: { tests: ["e2e/desktop/**"], test_touch: "required" },
+        },
+      },
+    },
+  } as unknown as Manifest;
+
+  assert.deepEqual(
+    validateManifest(m).filter((issue) => issue.level === "error"),
+    [],
+  );
+});
+
+test("validation gates fail closed on unknown refs, unsafe checks, and incomplete acceptance policy", () => {
+  const m = {
+    spec: "ai-harness/v1",
+    identity: { name: "desktop", summary: "desktop app" },
+    capabilities: {
+      unit: { run: "pnpm test:unit" },
+      daemon: { run: "pnpm dev", background: true },
+    },
+    modules: [
+      {
+        name: "renderer",
+        role: "renderer UI",
+        entry: ["src/renderer.ts"],
+        owns: ["src/renderer/**"],
+        gates: ["missing-gate", "broken-gate"],
+      },
+    ],
+    validation: {
+      gates: {
+        "broken-gate": {
+          checks: ["ghost", "daemon"],
+          acceptance: { tests: ["!e2e/generated/**"], test_touch: "sometimes" },
+        },
+        "empty-gate": { checks: [] },
+      },
+    },
+  } as unknown as Manifest;
+  const errors = validateManifest(m)
+    .filter((issue) => issue.level === "error")
+    .map((issue) => issue.msg);
+
+  assert.ok(errors.some((message) => /validation gate missing-gate 未声明/.test(message)));
+  assert.ok(errors.some((message) => /broken-gate\.checks 引用了未声明的 capability: ghost/.test(message)));
+  assert.ok(errors.some((message) => /broken-gate\.checks 引用了不可自动执行的 capability: daemon/.test(message)));
+  assert.ok(errors.some((message) => /broken-gate.*acceptance.*不支持 !/.test(message)));
+  assert.ok(errors.some((message) => /broken-gate.*test_touch.*required\/advisory\/off/.test(message)));
+  assert.ok(errors.some((message) => /empty-gate.*checks.*至少一个/.test(message)));
+});
+
+test("validation gates cannot be dead configuration", () => {
+  const m = {
+    spec: "ai-harness/v1",
+    identity: { name: "desktop", summary: "desktop app" },
+    capabilities: { e2e: { run: "pnpm e2e" } },
+    modules: [{ name: "renderer", role: "renderer", entry: ["src/page.ts"], gates: ["linked"] }],
+    validation: {
+      gates: {
+        linked: { checks: ["e2e"] },
+        "orphan-check-only": { checks: ["e2e"] },
+        orphan: { checks: ["e2e"], acceptance: { tests: ["e2e/**"], test_touch: "required" } },
+      },
+    },
+  } as unknown as Manifest;
+  const errors = validateManifest(m).filter((issue) => issue.level === "error").map((issue) => issue.msg);
+
+  assert.ok(errors.some((message) => /module "renderer".*gates.*没有 owns/.test(message)));
+  assert.ok(errors.some((message) => /validation gate orphan-check-only 未被任何 module\.gates 引用/.test(message)));
+  assert.ok(errors.some((message) => /validation gate orphan 未被任何 module\.gates 引用/.test(message)));
 });

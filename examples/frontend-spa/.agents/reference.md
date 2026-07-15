@@ -4,14 +4,13 @@
 
 ## Commands
 
-- `setup`: `pnpm install`
+- `setup`: `pnpm install && pnpm exec playwright install chromium`
 - `run`: `pnpm dev` — 本地 dev server (long-running)
 - `build`: `pnpm build` — 产物到 dist/
 - `typecheck`: `tsc --noEmit`
 - `lint`: `pnpm lint`
 - `test`: `pnpm test` — Vitest 单测
 - `e2e`: `pnpm e2e` — Playwright 端到端
-- `verify`: `harness verify`
 
 ## Environment
 

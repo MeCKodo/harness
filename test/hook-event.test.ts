@@ -155,6 +155,7 @@ test("SessionStart preserves the exact base, committed changes are checked, and 
   assert.equal(body.evidence.status, "verified");
   assert.deepEqual(body.evidence.changed, ["src/core.ts", "test/core.test.ts"]);
   assert.equal(body.evidence.verifyPassed, true);
+  assert.match(body.evidence.planFingerprint, /^[a-f0-9]{64}$/);
   assert.deepEqual(body.nextActions, []);
   const hookStatus = inspectAgentHookStatus(repo);
   assert.equal(hookStatus.state, "active");

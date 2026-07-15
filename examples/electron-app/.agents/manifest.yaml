@@ -1,0 +1,73 @@
+spec: ai-harness/v1
+
+# 压测样例 E：Electron 桌面应用（main + preload + renderer + shared IPC）
+
+identity:
+  name: desktop-notes
+  summary: 具有真实桌面进程边界与浏览器渲染层的 Electron 应用
+  scope_in:
+    - Electron main / preload / renderer
+    - 跨进程 IPC 协议
+    - 关键桌面用户路径回归
+  scope_out:
+    - 签名、公证与商店发布
+
+capabilities:
+  setup:        { run: "pnpm install && pnpm exec playwright install chromium" }
+  unit:         { run: "pnpm test:unit", desc: "快速逻辑与进程内单测" }
+  run:          { run: "pnpm dev", desc: "本地 Electron 开发态", background: true }
+  renderer-e2e: { run: "pnpm test:e2e:renderer", desc: "自启动/清理的 renderer 用户流" }
+  electron-e2e: { run: "pnpm test:e2e:electron", desc: "启动真实 Electron 的 main/preload/IPC 回归" }
+
+knowledge:
+  - path: knowledge/architecture.md
+    role: architecture
+
+modules:
+  - name: renderer
+    role: 浏览器渲染层与用户交互
+    entry: ["src/renderer/app.js"]
+    owns: ["src/renderer/**"]
+    tests: ["test/renderer/**"]
+    checks: ["unit"]
+    gates: ["renderer-user-flow"]
+    test_touch: required
+
+  - name: desktop-runtime
+    role: Electron main / preload 与窗口生命周期
+    entry: ["electron/main/index.cjs", "electron/preload/index.cjs"]
+    owns: ["electron/main/**", "electron/preload/**"]
+    tests: ["test/electron/**"]
+    checks: ["unit"]
+    gates: ["desktop-process-flow"]
+    test_touch: required
+
+  - name: shared-ipc
+    role: renderer 与桌面进程共享的 IPC 契约
+    entry: ["src/shared/ipc.cjs"]
+    owns: ["src/shared/**"]
+    tests: ["test/shared/**"]
+    checks: ["unit"]
+    gates: ["renderer-user-flow", "desktop-process-flow"]
+    test_touch: required
+
+validation:
+  required_coverage: ["src/**", "electron/**"]
+  gates:
+    renderer-user-flow:
+      desc: renderer 改动必须通过真实浏览器用户路径，不能只跑组件单测
+      checks: ["renderer-e2e"]
+      acceptance:
+        tests: ["e2e/renderer/**"]
+        test_touch: required
+    desktop-process-flow:
+      desc: main/preload/IPC 改动必须通过真实 Electron 进程回归
+      checks: ["electron-e2e"]
+      acceptance:
+        tests: ["e2e/electron/**"]
+        test_touch: required
+  defaults:
+    no_match: ["unit"]
+
+playbooks:
+  dir: playbooks/

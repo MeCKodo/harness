@@ -56,13 +56,13 @@
 
 ## validation-runner — plan-checks / run-checks / evidence 与持久化验收状态
 - Entry: `src/commands/run-checks.ts`
-- Owns (prod): `src/commands/plan-checks.ts`, `src/commands/run-checks.ts`, `src/commands/evidence.ts`, `src/validation-state.ts`
-- Tests: `test/run-checks.test.ts`, `test/validation-state.test.ts`
+- Owns (prod): `src/commands/plan-checks.ts`, `src/commands/run-checks.ts`, `src/commands/evidence.ts`, `src/validation-state.ts`, `src/validation-plan.ts`, `src/validation-gates.ts`
+- Tests: `test/run-checks.test.ts`, `test/validation-state.test.ts`, `test/doctor.test.ts`, `test/verify.test.ts`
 - Checks: `test`, `typecheck`
 - Test touch: `required`
 - Pitfall: run-checks 只执行可终止、无副作用的 capability；unknown/background/mutating 都必须 fail closed
 - Pitfall: waiver 只允许覆盖类 gap，且仅对同一 change fingerprint + gap kind + scope 生效，理由不能为空
-- Pitfall: evidence 读取时必须重算 fingerprint；代码变化后的旧绿灯必须 stale + 非零退出
+- Pitfall: evidence 读取时必须重算代码与 validation-plan fingerprint；代码、policy/planner 变化或旧证据缺少计划绑定都必须 stale + 非零退出
 - Pitfall: 手动 evidence 的整体 valid 也要求同指纹 verifyPassed，run-checks 单独通过只算 runChecksValid
 - Pitfall: 无 lifecycle session 时，隐式 HEAD 的 no-change 不能证明已 commit 的任务；手动验收必须传 task-start base
 
@@ -112,7 +112,7 @@
 ## core-gates — init/sync/doctor/verify/contract/enforcement 的通用基础
 - Entry: `src/commands/verify.ts`
 - Owns (prod): `src/commands/{accept,doctor,verify}.ts`, `src/{contracts,util,guidance}.ts`
-- Tests: `test/contracts.test.ts`, `test/state.test.ts`, `test/examples.test.ts`, `test/guidance.test.ts`
+- Tests: `test/contracts.test.ts`, `test/state.test.ts`, `test/examples.test.ts`, `test/guidance.test.ts`, `test/doctor.test.ts`, `test/verify.test.ts`
 - Checks: `test`, `typecheck`
 - Pitfall: verify --json 对 repo-controlled matcher/文件系统异常也必须只输出一份结构化失败报告
 - Pitfall: accept-contract 必须先校验 manifest，基线只能写 .agents/contracts 的安全普通文件
@@ -123,7 +123,7 @@
 - Tests: `test/onboard.test.ts`
 - Checks: `test`, `typecheck`
 
-## examples — 四种接入形态的可读、doctor-healthy 回归样板
+## examples — 五种接入形态的可读、doctor-healthy 回归样板（含 Electron validation gates）
 - Entry: `test/examples.test.ts`
 - Owns (prod): `examples/**`
 - Tests: `test/examples.test.ts`

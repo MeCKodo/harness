@@ -3,6 +3,8 @@ dist/
 *.log
 .DS_Store
 pnpm-workspace.yaml
+!examples/frontend-spa/pnpm-workspace.yaml
+!examples/electron-app/pnpm-workspace.yaml
 
 # Local design notes — kept out of the public repo.
 /DESIGN.md

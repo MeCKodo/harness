@@ -62,6 +62,10 @@ harness-kit init --repo .
    - 每个 `owns` / `tests` / `required_coverage` 正向 glob 写入前都要对仓库文件清单实际求值并确认命中；不得套用惯例路径、发明 glob 或使用 `!` 否定 glob。真实不存在的测试/检查要报 GAP，不能造一个来过门禁。
    - `checks` 只能引用已声明、可终止、无副作用且亲自验证可运行的 capability 动词。用 `plan-checks` / `run-checks` 验证真实改动能选中预期模块、测试与检查。
    - `test_touch` 按实际风险设为 `required | advisory | off`；公共接口、核心业务、安全边界优先 `required`，不能全仓拍脑袋一刀切。
+   - 做一次**用户可观察行为的验证面审计**：从真实 scripts、测试配置与测试文件识别浏览器用户流、桌面进程边界、main/preload/renderer/IPC、CLI/API smoke 等项目实际存在的 acceptance/E2E 检查。领域名称由项目定义，Harness 核心不内置 taxonomy。
+   - 已有可终止、无副作用的 E2E/acceptance 命令时，先把 manifest 升为 `spec: ai-harness/v1`，再用 `validation.gates` 声明 mandatory checks，并由有真实 `owns` 的相关 `modules[].gates` 直接引用；不能只放在 `routing.verify` 或可选 profile。v1 让旧 CLI fail closed；gate 会在普通 Stop 中自动执行，profile 也不能绕过。
+   - gate 的 `acceptance.tests` 必须只覆盖该层验收 case，并显式声明 `test_touch`。不要把 unit 与 acceptance glob 混在一起；修改 unit test 不能满足 gate 的 acceptance touch。
+   - 没有真实 E2E/acceptance runner 或 case 时不得发明命令、文件或 glob 来做绿；先判断能否在本次 onboarding 内安全补一个自启动、自清理的最小关键旅程。若不能，必须把触发范围、操作步骤和成功标准持久化为 `invariants[].manual: true`，并从相关 module 的 playbook/pitfall 指向它；不能只在最终聊天里报告，也不得宣称用户路径已自动覆盖。
 7. **routing**：按常见改动类型写 `read`、`entry`、`dont_assume`、`verify`。`routing.verify` 是给 agent 读的最小提示；`modules.checks` 是供 `run-checks` 执行的 capability，别混用。
 8. **knowledge**：把第 1 步的文档按 `root` / `authority` 注册；只新增代码推不出的领域知识、坑和决策，重要决策写 journal ADR。`binds` 必须是实际源文件，用于新鲜度检查。
 

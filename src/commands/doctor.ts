@@ -8,6 +8,7 @@ import { inspectManagedFiles } from "../managed-files";
 import { renderAgentsMd, renderTargets } from "../render";
 import { inspectContextFreshness, readState, resolveKnowledgePath } from "../state";
 import { err, info, ok, warn } from "../util";
+import { inspectValidationGateHealth } from "../validation-gates";
 
 // AGENTS.md must stay short (progressive disclosure): it is an index, not a dump.
 const AGENTS_MAX_LINES = 150;
@@ -72,6 +73,15 @@ export function doctorCmd(repo: string, opts: DoctorOpts = {}): number {
     }).length;
     if (n === 0)
       warn(`validation.required_coverage glob matches 0 files: ${glob} — a typo here silently weakens unmapped-file protection`);
+  }
+  for (const issue of inspectValidationGateHealth(repo, m)) {
+    const message = `validation gate ${issue.gate}: ${issue.message}`;
+    if (issue.level === "error") {
+      err(message);
+      problems++;
+    } else {
+      warn(message);
+    }
   }
 
   info("\n2) Referenced paths");

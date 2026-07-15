@@ -84,9 +84,11 @@ test("routing step in AGENTS.md adapts to whether routing exists", () => {
   );
 });
 
-test("modules.md renders the impact-map fields (owns/tests/checks/policy/playbook)", () => {
+test("modules.md renders impact fields and the project-defined validation gate catalog", () => {
   const targets = renderTargets({
     ...base,
+    spec: "ai-harness/v1",
+    capabilities: { test: { run: "pnpm test" }, e2e: { run: "pnpm e2e" } },
     modules: [
       {
         name: "api",
@@ -95,17 +97,33 @@ test("modules.md renders the impact-map fields (owns/tests/checks/policy/playboo
         owns: ["src/api/**"],
         tests: ["test/api/**"],
         checks: ["test"],
+        gates: ["user-flow"],
         test_touch: "required",
         playbook: "verify-api.md",
       },
     ],
+    validation: {
+      gates: {
+        "user-flow": {
+          desc: "exercise the observable flow",
+          checks: ["e2e"],
+          acceptance: { tests: ["e2e/**"], test_touch: "required" },
+        },
+      },
+    },
   });
   const modulesMd = targets.find((t) => t[0] === ".agents/modules.md")![1];
   assert.match(modulesMd, /Owns \(prod\):.*src\/api/);
   assert.match(modulesMd, /Tests:.*test\/api/);
   assert.match(modulesMd, /Checks:.*test/);
+  assert.match(modulesMd, /Validation gates:.*user-flow/);
   assert.match(modulesMd, /Test touch:.*required/);
   assert.match(modulesMd, /Playbook:.*verify-api\.md/);
+  assert.match(modulesMd, /# Validation gates/);
+  assert.match(modulesMd, /## user-flow.*exercise the observable flow/);
+  assert.match(modulesMd, /Mandatory checks:.*e2e/);
+  assert.match(modulesMd, /Acceptance tests:.*e2e/);
+  assert.match(modulesMd, /Acceptance test touch:.*required/);
 });
 
 test("AGENTS.md points to run-checks + check-loop only when an impact map exists", () => {

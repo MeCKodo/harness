@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { collectChanges, EMPTY_TREE_BASE, GitDiffError, type ChangeSet } from "../git";
 import { loadManifest, validateManifest, type Manifest } from "../manifest";
-import { planChecks, type Gap, type Plan } from "../planner";
+import { validationPlanFingerprint, type Gap, type Plan } from "../planner";
 import {
   manualValidationSession,
   readValidationSession,
@@ -14,6 +14,7 @@ import {
   type ValidationStatus,
 } from "../validation-state";
 import { err, info, ok, warn } from "../util";
+import { planRepositoryChecks } from "../validation-plan";
 
 export interface RunChecksOpts {
   base?: string;
@@ -41,8 +42,10 @@ export interface RunChecksReport {
   resolvedBase: string | null;
   fingerprint: string;
   profile: string | null;
+  planFingerprint: string;
   changed: string[];
   affected: string[];
+  gates: string[];
   passed: string[];
   failed: Failure[];
   skipped: { id: string; reason: string }[];
@@ -81,7 +84,7 @@ function runOne(repo: string, cmd: string, timeoutMs: number): { ok: boolean; co
 }
 
 function emptyPlan(changed: string[], gaps: Gap[] = []): Plan {
-  return { changed, affected: [], checks: [], gaps, notes: [], profile: null };
+  return { changed, affected: [], gates: [], checks: [], gaps, notes: [], profile: null };
 }
 
 function outputJson(report: RunChecksReport): void {
@@ -96,8 +99,11 @@ function evidenceOf(report: RunChecksReport): ValidationEvidence {
     requestedBase: report.requestedBase,
     resolvedBase: report.resolvedBase,
     fingerprint: report.fingerprint,
+    profile: report.profile,
+    planFingerprint: report.planFingerprint,
     changed: report.changed,
     affected: report.affected,
+    gates: report.gates,
     checks: report.checks,
     gaps: report.gaps,
     notes: report.notes,
@@ -109,6 +115,7 @@ function evidenceOf(report: RunChecksReport): ValidationEvidence {
 
 function reportHuman(report: RunChecksReport): void {
   info(`run-checks (base ${report.requestedBase}) — ${report.changed.length} changed file(s), ${report.checks.length} check(s)`);
+  if (report.gates.length) info(`validation gates: ${report.gates.join(", ")}`);
   for (const id of report.passed) ok(id);
   for (const skipped of report.skipped) err(`${skipped.id}: NOT RUN — ${skipped.reason}`);
   for (const failure of report.failed) {
@@ -171,8 +178,10 @@ function buildReport(args: {
     resolvedBase: changes.resolvedBase,
     fingerprint: changes.fingerprint,
     profile: plan.profile,
+    planFingerprint: validationPlanFingerprint(plan),
     changed: changes.files,
     affected: plan.affected,
+    gates: plan.gates,
     passed,
     failed,
     skipped,
@@ -230,7 +239,7 @@ export function runChecksCmd(repo: string, opts: RunChecksOpts): number {
 
   let plan = emptyPlan(changes.files);
   if (manifest && !manifestErrors.length && changes.fingerprint) {
-    plan = planChecks(manifest, changes.entries, { profile: opts.profile });
+    plan = planRepositoryChecks(repo, manifest, changes.entries, { profile: opts.profile });
   } else if (manifestErrors.length) {
     plan.gaps.push({
       kind: "manifest-invalid",

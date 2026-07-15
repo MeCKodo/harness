@@ -204,6 +204,7 @@ export function renderModulesMd(m: Manifest): string {
     if (mod.owns?.length) L.push(`- Owns (prod): ${mod.owns.map((s) => `\`${safeStr(s)}\``).join(", ")}`);
     if (mod.tests?.length) L.push(`- Tests: ${mod.tests.map((s) => `\`${safeStr(s)}\``).join(", ")}`);
     if (mod.checks?.length) L.push(`- Checks: ${mod.checks.map((s) => `\`${safeStr(s)}\``).join(", ")}`);
+    if (mod.gates?.length) L.push(`- Validation gates: ${mod.gates.map((s) => `\`${safeStr(s)}\``).join(", ")}`);
     if (mod.test_touch) L.push(`- Test touch: \`${safeStr(mod.test_touch)}\``);
     if (mod.playbook) L.push(`- Playbook: \`${safeStr(mod.playbook)}\``);
     if (mod.upstream?.length) L.push(`- Upstream: ${mod.upstream.map(safeStr).join(", ")}`);
@@ -211,6 +212,19 @@ export function renderModulesMd(m: Manifest): string {
     if (mod.must_know?.length) for (const k of mod.must_know) L.push(`- Must know: ${safeStr(k)}`);
     if (mod.pitfalls?.length) for (const p of mod.pitfalls) L.push(`- Pitfall: ${safeStr(p)}`);
     L.push("");
+  }
+  if (m.validation?.gates && Object.keys(m.validation.gates).length) {
+    L.push("# Validation gates", "");
+    L.push("Project-defined mandatory proof obligations. Profiles may replace ordinary module checks, but they cannot bypass these gates.", "");
+    for (const [id, gate] of Object.entries(m.validation.gates)) {
+      L.push(`## ${safeStr(id)}${gate.desc ? ` — ${safeStr(gate.desc)}` : ""}`);
+      L.push(`- Mandatory checks: ${gate.checks.map((check) => `\`${safeStr(check)}\``).join(", ")}`);
+      if (gate.acceptance) {
+        L.push(`- Acceptance tests: ${gate.acceptance.tests.map((test) => `\`${safeStr(test)}\``).join(", ")}`);
+        L.push(`- Acceptance test touch: \`${safeStr(gate.acceptance.test_touch)}\``);
+      }
+      L.push("");
+    }
   }
   return L.join("\n");
 }
