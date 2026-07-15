@@ -11,6 +11,8 @@ Commands:
   init [options]                   scaffold .agents/ skeleton + starter manifest
   sync [options]                   generate tool files (AGENTS.md, CLAUDE.md)
                                    from manifest
+  upgrade [options]                upgrade this repository to the running
+                                   harness-kit version
   prepare-adoption [options]       render a private, repository-external
                                    candidate bundle for blind legacy review
   record-adoption-audit [options]  record a declared pass/fail review receipt
@@ -89,6 +91,18 @@ Options:
   --candidate <dir>  prepared adoption bundle outside the repository
   --audit <receipt>  pass audit receipt bound to the candidate bundle
   -h, --help         display help for command
+
+## upgrade
+Usage: harness-kit upgrade [options]
+
+upgrade this repository to the running harness-kit version
+
+Options:
+  -C, --repo <dir>  target repo dir (default: current directory)
+  --check           read-only; exit 2 when an upgrade is available (default:
+                    false)
+  --json            machine-readable single-report output (default: false)
+  -h, --help        display help for command
 
 ## doctor
 Usage: harness-kit doctor [options]

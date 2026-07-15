@@ -22,7 +22,7 @@ Before you finish:
 ## Scope
 
 In scope:
-- CLI 命令 init / prepare-adoption / record-adoption-audit / sync / doctor / verify / accept-contract / install-hooks / onboard / plan-checks / run-checks / evidence / record-context-review / check-loop（src/）
+- CLI 命令 init / prepare-adoption / record-adoption-audit / sync / upgrade / doctor / verify / accept-contract / install-hooks / onboard / plan-checks / run-checks / evidence / record-context-review / check-loop（src/）
 - manifest schema + 生成器 + 声明式不变量执行 + 派生新鲜度 + 影响面 planner
 
 Out of scope (do NOT modify here):

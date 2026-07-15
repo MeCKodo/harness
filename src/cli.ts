@@ -17,6 +17,7 @@ import { runChecksCmd } from "./commands/run-checks";
 import { recordContextReviewCmd } from "./commands/record-context-review";
 import { prepareAdoptionCmd } from "./commands/prepare-adoption";
 import { recordAdoptionAuditCmd } from "./commands/record-adoption-audit";
+import { upgradeCmd } from "./commands/upgrade";
 import { ALL_AGENTS, type AgentTool } from "./commands/stop-hooks";
 
 function guard(fn: () => void | number): void {
@@ -68,6 +69,14 @@ program
       }),
     ),
   );
+
+program
+  .command("upgrade")
+  .description("upgrade this repository to the running harness-kit version")
+  .option("-C, --repo <dir>", "target repo dir (default: current directory)")
+  .option("--check", "read-only; exit 2 when an upgrade is available", false)
+  .option("--json", "machine-readable single-report output", false)
+  .action((o) => guard(() => upgradeCmd(repoOf(o), { check: o.check, json: o.json })));
 
 program
   .command("prepare-adoption")

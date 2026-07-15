@@ -1,6 +1,8 @@
 import { captureLegacyEntries } from "../adoption";
 import { inspectManagedFiles, writeManagedFiles, type ManagedFileTarget } from "../managed-files";
 import { err, info, ok } from "../util";
+import pkg from "../../package.json";
+import { initialUpgradeState, UPGRADE_STATE_REL } from "../upgrade";
 
 function manifestTemplate(name: string): string {
   return `spec: ai-harness/v0
@@ -52,6 +54,7 @@ playbooks:
 export function initCmd(repo: string, name: string, force: boolean): number {
   const targets: ManagedFileTarget[] = [
     [".agents/manifest.yaml", manifestTemplate(name)],
+    [UPGRADE_STATE_REL, initialUpgradeState(pkg.name, pkg.version, "ai-harness/v0")],
     [
       ".agents/knowledge/domain.md",
       `# ${name} — domain\n\nWhat this project does and its key concepts.\nWrite only what an agent cannot infer from the code.\n`,
