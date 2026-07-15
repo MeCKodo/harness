@@ -1,7 +1,6 @@
-import { collectChanges, EMPTY_TREE_BASE } from "../git";
 import { buildHarnessGuidance, type HarnessNextAction } from "../guidance";
 import { agentHookConfigurationFingerprint, inspectAgentHookStatus, type AgentHookStatus } from "../hook-status";
-import { readLatestValidationSession, readValidationSession } from "../validation-state";
+import { inspectValidationEvidenceFreshness, readLatestValidationSession, readValidationSession } from "../validation-state";
 import { err, info, ok, warn } from "../util";
 
 export interface EvidenceOpts {
@@ -73,14 +72,8 @@ export function evidenceCmd(repo: string, opts: EvidenceOpts = {}): number {
     evidence: session.lastEvidence,
   };
   const evidence = session.lastEvidence;
-  let currentFingerprint = "";
-  let refreshError = "";
-  try {
-    currentFingerprint = collectChanges(repo, evidence.resolvedBase ?? EMPTY_TREE_BASE, { mode: "exact" }).fingerprint;
-  } catch (error) {
-    refreshError = (error as Error).message;
-  }
-  const stale = !currentFingerprint || currentFingerprint !== evidence.fingerprint;
+  const freshness = inspectValidationEvidenceFreshness(repo, evidence);
+  const { currentFingerprint, currentPlanFingerprint, stale } = freshness;
   const runChecksValid =
     (evidence.runChecksStatus !== undefined ? evidence.runChecksStatus !== "not-verified" : evidence.ok && evidence.status !== "not-verified") &&
     !stale;
@@ -100,7 +93,10 @@ export function evidenceCmd(repo: string, opts: EvidenceOpts = {}): number {
     hookConfigurationCurrent,
     stale,
     currentFingerprint,
-    refreshError,
+    currentPlanFingerprint,
+    fingerprintStale: freshness.fingerprintStale,
+    planStale: freshness.planStale,
+    refreshError: freshness.error,
     hooks,
     nextActions: guidance.nextActions,
   };
@@ -121,8 +117,9 @@ export function evidenceCmd(repo: string, opts: EvidenceOpts = {}): number {
   info(`dirty at SessionStart: ${session.initialDirty.length ? session.initialDirty.join(", ") : "(none)"}`);
   if (evidence.verifyPassed !== undefined) info(`verify: ${evidence.verifyPassed ? "passed" : "failed"}`);
   else err("verify: no matching result was recorded");
-  if (refreshError) err(`cannot refresh current fingerprint: ${refreshError}`);
+  if (freshness.error) err(`cannot refresh current validation plan: ${freshness.error}`);
   info(`checks: ${evidence.checks.map((check) => `${check.id}:${check.status}`).join(", ") || "(none)"}`);
+  if (evidence.gates?.length) info(`validation gates: ${evidence.gates.join(", ")}`);
   if (evidence.waivers.length) {
     info("waivers:");
     for (const waiver of evidence.waivers) warn(`${waiver.kind}:${waiver.where} — ${waiver.reason}`);

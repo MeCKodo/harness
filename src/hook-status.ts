@@ -1,9 +1,9 @@
 import { existsSync, lstatSync } from "node:fs";
 import { join } from "node:path";
 import { inspectCodexLinkedHooks, isLinkedGitWorktree } from "./codex-linked-hooks";
-import { collectChanges, EMPTY_TREE_BASE, gitAdminDir } from "./git";
+import { gitAdminDir } from "./git";
 import { inspectManagedFiles } from "./managed-files";
-import { readLatestHookValidationSession } from "./validation-state";
+import { inspectValidationEvidenceFreshness, readLatestHookValidationSession } from "./validation-state";
 import { sha256 } from "./util";
 import {
   installedAgentHookRunnerScript,
@@ -257,13 +257,9 @@ export function inspectAgentHookStatus(repo: string): AgentHookStatus {
     if (session && session.agent !== "manual" && evidence) {
       evidenceAgent = session.agent;
       evidenceAt = evidence.createdAt;
-      let currentFingerprint = "";
-      try {
-        currentFingerprint = collectChanges(repo, evidence.resolvedBase ?? EMPTY_TREE_BASE, { mode: "exact" }).fingerprint;
-      } catch (error) {
-        issues.push(`cannot refresh lifecycle evidence: ${(error as Error).message}`);
-      }
-      const stale = !currentFingerprint || currentFingerprint !== evidence.fingerprint;
+      const freshness = inspectValidationEvidenceFreshness(repo, evidence);
+      if (freshness.error) issues.push(`cannot refresh lifecycle evidence: ${freshness.error}`);
+      const stale = freshness.stale;
       const runChecksValid =
         (evidence.runChecksStatus !== undefined
           ? evidence.runChecksStatus !== "not-verified"

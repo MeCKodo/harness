@@ -205,7 +205,7 @@ export function hookEventCmd(repoInput: string, opts: HookEventOpts): number {
   const verifyPassed = verify.code === 0 && !finalFingerprintError;
   let evidencePersisted = false;
   try {
-    evidencePersisted = markLatestVerifyResult(repo, token, verifyPassed, report?.fingerprint);
+    evidencePersisted = markLatestVerifyResult(repo, token, verifyPassed, report?.fingerprint, report?.planFingerprint);
   } catch (error) {
     return block(opts.agent, opts.event, `harness-kit could not persist the final verify result: ${(error as Error).message}`);
   }

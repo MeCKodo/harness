@@ -86,6 +86,7 @@ test("a failed verify downgrades otherwise-green run-checks evidence", () => {
     requestedBase: "HEAD",
     resolvedBase: null,
     fingerprint: "abc",
+    planFingerprint: "plan-v1",
     changed: ["src/a.ts"],
     affected: ["a"],
     checks: [{ id: "test", status: "passed", exitCode: 0, durationMs: 1 }],
@@ -183,6 +184,17 @@ modules:
   assert.equal(JSON.parse(after.output).valid, true);
   assert.equal(JSON.parse(after.output).evidence.verifyPassed, true);
   assert.ok(JSON.parse(after.output).nextActions.some((action: any) => action.id === "install-lifecycle-hooks"));
+
+  const session = readLatestValidationSession(repo)!;
+  const currentEvidence = session.lastEvidence!;
+  const { planFingerprint: _oldPlan, verifyPassed: _oldVerify, runChecksStatus: _oldStatus, ...legacyEvidence } = currentEvidence;
+  recordValidationEvidence(repo, session, legacyEvidence);
+  assert.equal(capture(() => verifyCmd(repo)).code, 0, "repository verification itself still passes");
+  const legacy = capture(() => evidenceCmd(repo, { json: true }));
+  assert.equal(legacy.code, 1, "pre-plan-binding evidence cannot be revived by a new verify");
+  assert.equal(JSON.parse(legacy.output).planStale, true);
+  assert.equal(JSON.parse(legacy.output).valid, false);
+  assert.match(JSON.parse(legacy.output).refreshError, /predates plan fingerprint binding/);
 });
 
 test("missing evidence JSON tells an Agent exactly how to create and prove it", () => {

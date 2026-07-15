@@ -8,6 +8,9 @@ import { installHooksCmd } from "../src/commands/install-hooks";
 import { installStopHooks } from "../src/commands/stop-hooks";
 import { collectChanges, EMPTY_TREE_BASE } from "../src/git";
 import { agentHookConfigurationFingerprint, inspectAgentHookStatus } from "../src/hook-status";
+import { loadManifest } from "../src/manifest";
+import { validationPlanFingerprint } from "../src/planner";
+import { planRepositoryChecks } from "../src/validation-plan";
 import { recordValidationEvidence, startValidationSession } from "../src/validation-state";
 
 function freshRepo(): string {
@@ -59,6 +62,7 @@ function captureOutput(run: () => number): { code: number; output: string } {
 
 function recordCurrentHookEvidence(repo: string, agent: "claude" | "cursor" | "codex"): void {
   const changes = collectChanges(repo, EMPTY_TREE_BASE, { mode: "exact" });
+  const planFingerprint = validationPlanFingerprint(planRepositoryChecks(repo, loadManifest(repo), changes.entries));
   const session = startValidationSession({
     repo,
     agent,
@@ -75,6 +79,7 @@ function recordCurrentHookEvidence(repo: string, agent: "claude" | "cursor" | "c
     requestedBase: EMPTY_TREE_BASE,
     resolvedBase: null,
     fingerprint: changes.fingerprint,
+    planFingerprint,
     changed: changes.files,
     affected: [],
     checks: [],

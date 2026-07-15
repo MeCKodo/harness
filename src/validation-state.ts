@@ -3,7 +3,9 @@ import { chmodSync, mkdirSync, readdirSync, realpathSync, renameSync, statSync, 
 import { dirname, join, resolve } from "node:path";
 import { sha256, readText } from "./util";
 import { collectChanges, EMPTY_TREE_BASE, gitAdminDir, gitRoot } from "./git";
-import type { Gap, PlanNote } from "./planner";
+import { loadManifest, validateManifest } from "./manifest";
+import { validationPlanFingerprint, type Gap, type PlanNote } from "./planner";
+import { planRepositoryChecks } from "./validation-plan";
 
 export type HookAgent = "claude" | "cursor" | "codex" | "manual";
 export type ValidationStatus =
@@ -35,8 +37,11 @@ export interface ValidationEvidence {
   requestedBase: string;
   resolvedBase: string | null;
   fingerprint: string;
+  profile?: string | null;
+  planFingerprint?: string;
   changed: string[];
   affected: string[];
+  gates?: string[];
   checks: CheckEvidence[];
   gaps: Gap[];
   notes: PlanNote[];
@@ -275,6 +280,38 @@ export function recordValidationEvidence(repo: string, session: ValidationSessio
   writeValidationSession(repo, { ...session, lastEvidence: evidence });
 }
 
+export interface ValidationEvidenceFreshness {
+  currentFingerprint: string;
+  currentPlanFingerprint: string;
+  fingerprintStale: boolean;
+  planStale: boolean;
+  stale: boolean;
+  error: string;
+}
+
+/** Recompute both code and selected-plan identity. Evidence from older planner
+ * protocols remains readable, but cannot become valid without a fresh run. */
+export function inspectValidationEvidenceFreshness(repo: string, evidence: ValidationEvidence): ValidationEvidenceFreshness {
+  let currentFingerprint = "";
+  let currentPlanFingerprint = "";
+  let error = "";
+  try {
+    const current = collectChanges(repo, evidence.resolvedBase ?? EMPTY_TREE_BASE, { mode: "exact" });
+    currentFingerprint = current.fingerprint;
+    const manifest = loadManifest(repo);
+    const manifestErrors = validateManifest(manifest).filter((issue) => issue.level === "error");
+    if (manifestErrors.length) throw new Error(`manifest invalid: ${manifestErrors.map((issue) => issue.msg).join("; ")}`);
+    const plan = planRepositoryChecks(repo, manifest, current.entries, { profile: evidence.profile ?? undefined });
+    currentPlanFingerprint = validationPlanFingerprint(plan);
+  } catch (cause) {
+    error = (cause as Error).message;
+  }
+  const fingerprintStale = !currentFingerprint || currentFingerprint !== evidence.fingerprint;
+  const planStale = !currentPlanFingerprint || !evidence.planFingerprint || currentPlanFingerprint !== evidence.planFingerprint;
+  if (!error && !evidence.planFingerprint) error = "validation evidence predates plan fingerprint binding; rerun run-checks";
+  return { currentFingerprint, currentPlanFingerprint, fingerprintStale, planStale, stale: fingerprintStale || planStale, error };
+}
+
 export function clearValidationEvidence(repo: string, session: ValidationSession): void {
   writeValidationSession(repo, { ...session, lastEvidence: undefined });
 }
@@ -289,11 +326,18 @@ export function recordWaiver(repo: string, session: ValidationSession, waiver: S
   return next;
 }
 
-export function markLatestVerifyResult(repo: string, token: string, passed: boolean, expectedFingerprint?: string): boolean {
+export function markLatestVerifyResult(
+  repo: string,
+  token: string,
+  passed: boolean,
+  expectedFingerprint?: string,
+  expectedPlanFingerprint?: string,
+): boolean {
   const session = readValidationSession(repo, token);
   if (!session?.lastEvidence) return false;
   const evidence = session.lastEvidence;
   if (expectedFingerprint && evidence.fingerprint !== expectedFingerprint) return false;
+  if (!evidence.planFingerprint || (expectedPlanFingerprint && evidence.planFingerprint !== expectedPlanFingerprint)) return false;
   const runChecksStatus = evidence.runChecksStatus ?? evidence.status;
   const runChecksOk = runChecksStatus !== "not-verified";
   recordValidationEvidence(repo, session, {
@@ -320,13 +364,7 @@ export function markManualVerifyResult(repoInput: string, passed: boolean): Manu
   const session = readValidationSession(repo, token);
   if (!session?.lastEvidence) return "none";
   const evidence = session.lastEvidence;
-  let matches = false;
-  try {
-    const current = collectChanges(repo, evidence.resolvedBase ?? EMPTY_TREE_BASE, { mode: "exact" });
-    matches = current.fingerprint === evidence.fingerprint;
-  } catch {
-    matches = false;
-  }
-  const updated = markLatestVerifyResult(repo, token, passed && matches, evidence.fingerprint);
+  const matches = !inspectValidationEvidenceFreshness(repo, evidence).stale;
+  const updated = markLatestVerifyResult(repo, token, passed && matches, evidence.fingerprint, evidence.planFingerprint);
   return matches && updated ? "matched" : "stale";
 }

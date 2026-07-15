@@ -7,7 +7,7 @@ import { doctorCmd } from "../src/commands/doctor";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-for (const name of ["cli-tool", "demo-run", "frontend-spa", "npm-lib"]) {
+for (const name of ["cli-tool", "demo-run", "electron-app", "frontend-spa", "npm-lib"]) {
   test(`example ${name} stays doctor-healthy`, () => {
     const original = process.stdout.write.bind(process.stdout);
     const chunks: string[] = [];
@@ -39,3 +39,19 @@ for (const name of ["cli-tool", "demo-run", "frontend-spa", "npm-lib"]) {
     assert.match(reference, /^## Registered knowledge$/m);
   });
 }
+
+test("frontend and Electron gate examples contain real package scripts and executable test bodies", () => {
+  const frontend = join(ROOT, "examples", "frontend-spa");
+  const frontendPackage = JSON.parse(readFileSync(join(frontend, "package.json"), "utf8"));
+  assert.equal(frontendPackage.scripts.e2e, "playwright test");
+  assert.match(readFileSync(join(frontend, "pnpm-workspace.yaml"), "utf8"), /allowBuilds:[\s\S]*esbuild: true/);
+  assert.match(readFileSync(join(frontend, "e2e", "dashboard.spec.ts"), "utf8"), /test\([\s\S]*page\.goto/);
+
+  const electron = join(ROOT, "examples", "electron-app");
+  const electronPackage = JSON.parse(readFileSync(join(electron, "package.json"), "utf8"));
+  assert.match(electronPackage.scripts["test:e2e:renderer"], /playwright test/);
+  assert.match(electronPackage.scripts["test:e2e:electron"], /playwright test/);
+  assert.match(readFileSync(join(electron, "pnpm-workspace.yaml"), "utf8"), /allowBuilds:[\s\S]*electron: true/);
+  assert.match(readFileSync(join(electron, "e2e", "renderer", "navigation.spec.mjs"), "utf8"), /test\([\s\S]*page\.goto/);
+  assert.match(readFileSync(join(electron, "e2e", "electron", "ipc.spec.mjs"), "utf8"), /electron\.launch[\s\S]*notes:list|electron\.launch[\s\S]*Load notes/);
+});

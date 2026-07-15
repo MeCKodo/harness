@@ -81,9 +81,19 @@ export interface Module {
   owns?: string[]; // production-file globs owned by this module (used to match a diff)
   tests?: string[]; // test-file globs covering this module (used to detect a test touch)
   checks?: string[]; // capability verbs to run when this module changes (executed by run-checks)
+  gates?: string[]; // project-defined validation gates that cannot be bypassed by a profile
   playbook?: string; // ref into playbooks dir: how to verify changes to this module
   remediation?: string; // custom hint appended to gaps for this module
   test_touch?: TestTouchPolicy; // whether a production change must also touch a declared test
+}
+
+export interface ValidationGate {
+  desc?: string;
+  checks: string[]; // runnable capabilities that must execute whenever this gate is affected
+  acceptance?: {
+    tests: string[]; // acceptance-test globs, intentionally separate from module unit tests
+    test_touch: TestTouchPolicy; // explicit: required/advisory/off; no hidden default
+  };
 }
 
 /**
@@ -92,6 +102,7 @@ export interface Module {
  * no domain taxonomy — projects author their own surfaces via modules[].
  */
 export interface Validation {
+  gates?: Record<string, ValidationGate>; // reusable project-defined proof obligations attached by modules[].gates
   checksets?: Record<string, { checks: string[] }>; // named, reusable check groups (ids are free-form)
   defaults?: {
     no_match?: string[]; // checks to run when a change matches no module.owns
@@ -125,7 +136,8 @@ export interface Manifest {
 }
 
 export const MANIFEST_REL = ".agents/manifest.yaml";
-export const SUPPORTED_MANIFEST_SPEC = "ai-harness/v0";
+export const SUPPORTED_MANIFEST_SPECS = ["ai-harness/v0", "ai-harness/v1"] as const;
+export const LATEST_MANIFEST_SPEC = "ai-harness/v1";
 const MAX_GLOB_PATTERN_LENGTH = 4_096;
 
 export function manifestPath(repo: string): string {
@@ -242,8 +254,8 @@ export function validateManifest(m: Manifest): ValidationIssue[] {
 
   if (!m.spec) issues.push({ level: "error", msg: "缺少 spec 字段" });
   else if (typeof m.spec !== "string") issues.push({ level: "error", msg: "spec 必须是字符串" });
-  else if (m.spec !== SUPPORTED_MANIFEST_SPEC)
-    issues.push({ level: "error", msg: `不支持 manifest spec ${m.spec}；当前 CLI 只支持 ${SUPPORTED_MANIFEST_SPEC}` });
+  else if (!SUPPORTED_MANIFEST_SPECS.includes(m.spec as (typeof SUPPORTED_MANIFEST_SPECS)[number]))
+    issues.push({ level: "error", msg: `不支持 manifest spec ${m.spec}；当前 CLI 支持 ${SUPPORTED_MANIFEST_SPECS.join(", ")}` });
   if (!m.identity || !isRecord(m.identity)) issues.push({ level: "error", msg: "identity 必须是对象" });
   if (!m.identity?.name) issues.push({ level: "error", msg: "identity.name 必填" });
   else if (typeof m.identity.name !== "string") issues.push({ level: "error", msg: "identity.name 必须是字符串" });
@@ -390,6 +402,17 @@ export function validateManifest(m: Manifest): ValidationIssue[] {
     }
   }
 
+  const validationRecord = isRecord(m.validation) ? m.validation : {};
+  const declaredGates = isRecord(validationRecord.gates) ? validationRecord.gates : {};
+  const usesValidationGates = Object.keys(declaredGates).length > 0 ||
+    (Array.isArray(m.modules) && m.modules.some((module) => isRecord(module) && Array.isArray(module.gates) && module.gates.length > 0));
+  if (m.spec === "ai-harness/v0" && usesValidationGates)
+    issues.push({
+      level: "error",
+      msg: "validation.gates / modules[].gates 需要 spec: ai-harness/v1；v1 会让旧版 CLI fail closed，不能被静默当成 unit-only",
+    });
+  const gateIds = new Set(Object.keys(declaredGates));
+  const referencedGates = new Set<string>();
   const modSeen = new Set<string>();
   for (const rawModule of checkedList(m.modules, "modules")) {
     if (!isRecord(rawModule)) {
@@ -406,7 +429,7 @@ export function validateManifest(m: Manifest): ValidationIssue[] {
     if (typeof mod.role !== "string" || !mod.role) issues.push({ level: "error", msg: `module ${mod.name}.role 必填` });
     if (!mod.entry?.length)
       issues.push({ level: "warn", msg: `module ${mod.name} 未声明 entry（无法做新鲜度绑定）` });
-    for (const field of ["entry", "upstream", "downstream", "must_know", "pitfalls", "owns", "tests", "checks"] as const) {
+    for (const field of ["entry", "upstream", "downstream", "must_know", "pitfalls", "owns", "tests", "checks", "gates"] as const) {
       checkStrArr(mod[field], `module "${mod.name}" 的 ${field}`);
     }
     checkRelativePaths(mod.entry, `module "${mod.name}" 的 entry`);
@@ -422,6 +445,14 @@ export function validateManifest(m: Manifest): ValidationIssue[] {
     }
     if (mod.test_touch !== undefined && !["required", "advisory", "off"].includes(mod.test_touch))
       issues.push({ level: "error", msg: `module "${mod.name}" 的 test_touch 必须是 required/advisory/off` });
+    if (Array.isArray(mod.gates) && mod.gates.length > 0 && !(mod.owns?.length ?? 0))
+      issues.push({ level: "error", msg: `module "${mod.name}" 声明了 gates 但没有 owns；生产改动永远无法触发 gate` });
+    for (const gate of Array.isArray(mod.gates) ? mod.gates : []) {
+      if (typeof gate !== "string") continue;
+      referencedGates.add(gate);
+      if (!gateIds.has(gate))
+        issues.push({ level: "error", msg: `module "${mod.name}" 引用的 validation gate ${gate} 未声明` });
+    }
     // module.checks are EXECUTED by run-checks, so each must be a declared capability
     // (no raw commands here — those stay in routing.verify prose).
     for (const c of Array.isArray(mod.checks) ? mod.checks : []) {
@@ -445,6 +476,51 @@ export function validateManifest(m: Manifest): ValidationIssue[] {
       issues.push({ level: "error", msg: "validation 必须是对象" });
       return issues;
     }
+    const gates = v.gates;
+    if (gates !== undefined && !isRecord(gates)) issues.push({ level: "error", msg: "validation.gates 必须是对象" });
+    for (const [id, rawGate] of Object.entries(isRecord(gates) ? gates : {})) {
+      if (!id.trim()) {
+        issues.push({ level: "error", msg: "validation gate id 不能为空" });
+        continue;
+      }
+      if (!isRecord(rawGate)) {
+        issues.push({ level: "error", msg: `validation gate ${id} 必须是对象` });
+        continue;
+      }
+      if (rawGate.desc !== undefined && typeof rawGate.desc !== "string")
+        issues.push({ level: "error", msg: `validation gate ${id}.desc 必须是字符串` });
+      const checks = rawGate.checks;
+      if (!Array.isArray(checks) || checks.length === 0)
+        issues.push({ level: "error", msg: `validation gate ${id}.checks 必须包含至少一个 capability` });
+      else checkStrArr(checks, `validation gate ${id}.checks`);
+      for (const check of Array.isArray(checks) ? checks : []) {
+        if (typeof check !== "string") continue;
+        if (!capVerbs.has(check))
+          issues.push({ level: "error", msg: `validation gate ${id}.checks 引用了未声明的 capability: ${check}` });
+        else {
+          const cap = capabilities[check] as Capability | undefined;
+          if (cap?.mutating || cap?.background)
+            issues.push({ level: "error", msg: `validation gate ${id}.checks 引用了不可自动执行的 capability: ${check}` });
+        }
+      }
+      const acceptance = rawGate.acceptance;
+      if (acceptance !== undefined && !isRecord(acceptance)) {
+        issues.push({ level: "error", msg: `validation gate ${id}.acceptance 必须是对象` });
+      } else if (isRecord(acceptance)) {
+        if (!Array.isArray(acceptance.tests) || acceptance.tests.length === 0)
+          issues.push({ level: "error", msg: `validation gate ${id}.acceptance.tests 必须包含至少一个 glob` });
+        else checkStrArr(acceptance.tests, `validation gate ${id} 的 acceptance.tests`);
+        checkPositiveGlobs(acceptance.tests, `validation gate ${id} 的 acceptance.tests`);
+        checkGlobSafety(acceptance.tests, `validation gate ${id} 的 acceptance.tests`);
+        checkRelativePaths(acceptance.tests, `validation gate ${id} 的 acceptance.tests`);
+        if (!["required", "advisory", "off"].includes(String(acceptance.test_touch)))
+          issues.push({ level: "error", msg: `validation gate ${id}.acceptance.test_touch 必须是 required/advisory/off` });
+      }
+      if (!referencedGates.has(id)) {
+        issues.push({ level: "error", msg: `validation gate ${id} 未被任何 module.gates 引用，生产改动不会触发它` });
+      }
+    }
+
     const checksets = v.checksets;
     if (checksets !== undefined && !isRecord(checksets))
       issues.push({ level: "error", msg: "validation.checksets 必须是对象" });

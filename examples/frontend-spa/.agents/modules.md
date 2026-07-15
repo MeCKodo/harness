@@ -11,8 +11,18 @@
 - Pitfall: 组件不直接 fetch，统一走这里
 
 ## ui — UI 组件与页面
-- Entry: `src/components/index.ts`
-- Owns (prod): `src/components/**`, `src/pages/**`
-- Tests: `src/**/*.spec.tsx`, `e2e/**`
-- Checks: `test`, `e2e`
+- Entry: `src/components/index.tsx`
+- Owns (prod): `src/main.tsx`, `src/components/**`, `src/pages/**`
+- Tests: `src/**/*.spec.tsx`
+- Checks: `test`
+- Validation gates: `browser-user-flow`
 - Test touch: `advisory`
+
+# Validation gates
+
+Project-defined mandatory proof obligations. Profiles may replace ordinary module checks, but they cannot bypass these gates.
+
+## browser-user-flow — 浏览器中的关键用户路径必须实际回归，不能只靠组件单测
+- Mandatory checks: `e2e`
+- Acceptance tests: `e2e/**`
+- Acceptance test touch: `required`

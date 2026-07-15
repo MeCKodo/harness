@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { planChecksCmd } from "../src/commands/plan-checks";
 import { runChecksCmd, type RunChecksOpts } from "../src/commands/run-checks";
+import { readLatestValidationSession } from "../src/validation-state";
 
 // A fresh git repo. We rely on untracked files counting as "changed" (git
 // ls-files --others), so no commit/author config is needed.
@@ -285,4 +286,155 @@ validation:
   assert.equal(covered.code, 0);
   assert.deepEqual(covered.json.changed, ["src/core.ts", "test/core.test.ts"]);
   assert.equal(covered.json.status, "verified");
+});
+
+test("run-checks executes mandatory gate checks and unit test touch cannot satisfy gate acceptance", () => {
+  const manifest = `spec: ai-harness/v1
+identity: { name: desktop, summary: desktop fixture }
+capabilities:
+  unit: { run: "true" }
+  desktop-e2e: { run: "true" }
+modules:
+  - name: renderer
+    role: renderer UI
+    entry: [src/renderer/page.ts]
+    owns: [src/renderer/**]
+    tests: [test/unit/**]
+    checks: [unit]
+    test_touch: required
+    gates: [desktop-user-flow]
+validation:
+  gates:
+    desktop-user-flow:
+      checks: [desktop-e2e]
+      acceptance:
+        tests: [e2e/desktop/**]
+        test_touch: required
+  checksets:
+    fast: { checks: [unit] }
+`;
+  const unitOnly = freshRepo({
+    ".agents/manifest.yaml": manifest,
+    "src/renderer/page.ts": "export const page = 1;\n",
+    "test/unit/page.test.ts": "// unit coverage\n",
+  });
+  const blocked = runJson(unitOnly);
+  assert.equal(blocked.code, 1);
+  assert.ok(blocked.json.passed.includes("unit"));
+  assert.ok(blocked.json.passed.includes("desktop-e2e"));
+  assert.deepEqual(blocked.json.gates, ["desktop-user-flow"]);
+  assert.ok(blocked.json.gaps.some((gap: any) => gap.kind === "missing-test-touch" && gap.where === "gate:desktop-user-flow"));
+
+  const accepted = freshRepo({
+    ".agents/manifest.yaml": manifest,
+    "src/renderer/page.ts": "export const page = 1;\n",
+    "test/unit/page.test.ts": "// unit coverage\n",
+    "e2e/desktop/page.spec.ts": "// desktop acceptance\n",
+  });
+  const passed = runJson(accepted);
+  assert.equal(passed.code, 0);
+  assert.ok(passed.json.passed.includes("desktop-e2e"));
+  assert.deepEqual(passed.json.gates, ["desktop-user-flow"]);
+  assert.match(passed.json.planFingerprint, /^[a-f0-9]{64}$/);
+  assert.deepEqual(readLatestValidationSession(accepted)?.lastEvidence?.gates, ["desktop-user-flow"]);
+  assert.equal(readLatestValidationSession(accepted)?.lastEvidence?.planFingerprint, passed.json.planFingerprint);
+
+  const profiled = runJson(accepted, { profile: "fast" });
+  assert.equal(profiled.code, 0);
+  assert.ok(profiled.json.passed.includes("unit"));
+  assert.ok(profiled.json.passed.includes("desktop-e2e"), "a fast profile cannot bypass the gate command");
+});
+
+test("run-checks fails closed after the last required acceptance case is deleted even if the runner exits zero", () => {
+  const repo = freshRepo({
+    ".agents/manifest.yaml": `spec: ai-harness/v1
+identity: { name: deletion, summary: deletion fixture }
+capabilities:
+  e2e: { run: "true" }
+modules:
+  - name: renderer
+    role: renderer
+    entry: [src/page.ts]
+    owns: [src/**]
+    gates: [flow]
+validation:
+  gates:
+    flow:
+      checks: [e2e]
+      acceptance:
+        tests: [e2e/**]
+        test_touch: required
+`,
+    "src/page.ts": "export const page = 1;\n",
+    "e2e/only.spec.ts": "// only acceptance case\n",
+  });
+  execSync("git add .", { cwd: repo });
+  execSync('git -c user.name="Harness Test" -c user.email="harness@example.test" commit -qm initial', { cwd: repo });
+  unlinkSync(join(repo, "e2e/only.spec.ts"));
+
+  const result = runJson(repo, { base: "HEAD" });
+  assert.equal(result.code, 1);
+  assert.ok(result.json.passed.includes("e2e"), "the zero-exit runner still executed");
+  assert.ok(
+    result.json.gaps.some(
+      (gap: any) => gap.kind === "validation-gate-invalid" && gap.where === "gate:flow" && /matches 0 files/.test(gap.why),
+    ),
+  );
+});
+
+test("an unreferenced check-only gate is manifest-invalid instead of silently running unit-only", () => {
+  const repo = freshRepo({
+    ".agents/manifest.yaml": `spec: ai-harness/v1
+identity: { name: orphan-gate, summary: orphan gate fixture }
+capabilities:
+  unit: { run: "true" }
+  e2e: { run: "true" }
+modules:
+  - name: renderer
+    role: renderer
+    entry: [src/page.ts]
+    owns: [src/**]
+    checks: [unit]
+validation:
+  gates:
+    user-flow:
+      checks: [e2e]
+`,
+    "src/page.ts": "export const page = 1;\n",
+  });
+
+  const result = runJson(repo);
+  assert.equal(result.code, 1);
+  assert.equal(result.json.status, "not-verified");
+  assert.deepEqual(result.json.passed, []);
+  assert.ok(result.json.errors.some((error: string) => /manifest-invalid: validation gate user-flow 未被任何 module\.gates 引用/.test(error)));
+});
+
+test("a failing validation gate command blocks delivery", () => {
+  const repo = freshRepo({
+    ".agents/manifest.yaml": `spec: ai-harness/v1
+identity: { name: failing-gate, summary: failing gate fixture }
+capabilities:
+  e2e: { run: "node -e 'process.exit(7)'" }
+modules:
+  - name: renderer
+    role: renderer
+    entry: [src/page.ts]
+    owns: [src/**]
+    gates: [flow]
+validation:
+  gates:
+    flow:
+      checks: [e2e]
+      acceptance:
+        tests: [e2e/**]
+        test_touch: required
+`,
+    "src/page.ts": "export const page = 1;\n",
+    "e2e/page.spec.ts": "// acceptance\n",
+  });
+
+  const result = runJson(repo);
+  assert.equal(result.code, 1);
+  assert.ok(result.json.failed.some((failure: any) => failure.id === "e2e" && failure.code === 7));
 });

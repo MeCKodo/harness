@@ -38,12 +38,11 @@ Downstream: 终端用户浏览器, CDN（构建产物托管）
 
 ## Commands
 
-- `setup`: `pnpm install`
+- `setup`: `pnpm install && pnpm exec playwright install chromium`
 - `build`: `pnpm build` — 产物到 dist/
 - `typecheck`: `tsc --noEmit`
 - `lint`: `pnpm lint`
 - `test`: `pnpm test` — Vitest 单测
-- `verify`: `harness verify`
 
 ## Contracts (breaking changes need a version bump)
 

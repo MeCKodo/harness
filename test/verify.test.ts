@@ -47,6 +47,40 @@ test("verify --json emits one structured document", () => {
   assert.equal(result.body.nextActions[0].id, "install-lifecycle-hooks");
   assert.equal(result.body.nextActions[0].owner, "agent");
   assert.ok(Array.isArray(result.body.messages));
+  assert.ok(result.body.messages.some((message: any) => /validation checks require matching run-checks evidence/.test(message.text)));
+});
+
+test("verify fails closed when required validation gate coverage is empty", () => {
+  const repo = mkdtempSync(join(tmpdir(), "hk-verify-gate-"));
+  write(repo, "src/page.ts", "export const page = 1;\n");
+  write(
+    repo,
+    ".agents/manifest.yaml",
+    `spec: ai-harness/v1
+identity: { name: verify-gate, summary: gate fixture }
+capabilities:
+  e2e: { run: "true" }
+modules:
+  - name: renderer
+    role: renderer
+    entry: [src/page.ts]
+    owns: [src/**]
+    gates: [flow]
+validation:
+  gates:
+    flow:
+      checks: [e2e]
+      acceptance:
+        tests: [e2e/**]
+        test_touch: required
+`,
+  );
+  syncCmd(repo);
+
+  const result = runVerify(repo);
+  assert.equal(result.status, 1);
+  assert.equal(result.body.ok, false);
+  assert.ok(result.body.messages.some((message: any) => /validation gate flow.*matches 0 files/.test(message.text)));
 });
 
 test("verify collapses on-demand boundaries by default and explains them with --details", () => {

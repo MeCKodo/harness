@@ -1,6 +1,6 @@
 import { collectChanges, GitDiffError } from "../git";
 import { loadManifest, validateManifest } from "../manifest";
-import { planChecks } from "../planner";
+import { planRepositoryChecks } from "../validation-plan";
 import { err, info, ok, warn } from "../util";
 
 export interface PlanChecksOpts {
@@ -30,7 +30,7 @@ export function planChecksCmd(repo: string, opts: PlanChecksOpts): number {
     errors.push(`${kind}: ${(error as Error).message}`);
   }
 
-  const plan = m && changes && !errors.length ? planChecks(m, changes.entries, { profile: opts.profile }) : null;
+  const plan = m && changes && !errors.length ? planRepositoryChecks(repo, m, changes.entries, { profile: opts.profile }) : null;
 
   if (opts.json) {
     process.stdout.write(
@@ -40,7 +40,7 @@ export function planChecksCmd(repo: string, opts: PlanChecksOpts): number {
           requestedBase: base,
           resolvedBase: changes?.resolvedBase ?? null,
           fingerprint: changes?.fingerprint ?? "",
-          ...(plan ?? { changed: changes?.files ?? [], affected: [], checks: [], gaps: [], notes: [], profile: opts.profile ?? null }),
+          ...(plan ?? { changed: changes?.files ?? [], affected: [], gates: [], checks: [], gaps: [], notes: [], profile: opts.profile ?? null }),
           errors,
         },
         null,
@@ -58,6 +58,7 @@ export function planChecksCmd(repo: string, opts: PlanChecksOpts): number {
 
   info(`plan-checks (base ${base} -> ${changes.resolvedBase ?? "empty tree"}) — ${changes.files.length} changed file(s)`);
   info(plan.affected.length ? `affected modules: ${plan.affected.join(", ")}` : "affected modules: (none)");
+  info(plan.gates.length ? `validation gates: ${plan.gates.join(", ")}` : "validation gates: (none)");
 
   info("\nchecks to run:");
   if (!plan.checks.length) info("  (none)");

@@ -142,3 +142,172 @@ test("doctor treats only the semantic CLAUDE.md -> AGENTS.md alias as in sync", 
   assert.equal(result.code, 0, result.output);
   assert.match(result.output, /CLAUDE\.md.*semantic alias|CLAUDE\.md in sync/);
 });
+
+test("doctor blocks a required validation gate whose acceptance glob matches no tests", () => {
+  const repo = mkdtempSync(join(tmpdir(), "hk-doctor-gate-"));
+  write(repo, "src/renderer/page.ts", "export const page = 1;\n");
+  write(
+    repo,
+    ".agents/manifest.yaml",
+    `spec: ai-harness/v1
+identity: { name: doctor-gate, summary: validation gate fixture }
+capabilities:
+  e2e: { run: "true" }
+modules:
+  - name: renderer
+    role: renderer UI
+    entry: [src/renderer/page.ts]
+    owns: [src/renderer/**]
+    gates: [user-flow]
+validation:
+  gates:
+    user-flow:
+      checks: [e2e]
+      acceptance:
+        tests: [e2e/**]
+        test_touch: required
+`,
+  );
+  syncCmd(repo);
+
+  const missing = capture(() => doctorCmd(repo));
+  assert.equal(missing.code, 1);
+  assert.match(missing.output, /validation gate user-flow.*acceptance.*0 files.*required/i);
+
+  write(repo, "e2e/user-flow.spec.ts", "// acceptance coverage\n");
+  const covered = capture(() => doctorCmd(repo));
+  assert.equal(covered.code, 0, covered.output);
+});
+
+test("doctor does not accept validation coverage reached through a symlink outside the repository", () => {
+  const repo = mkdtempSync(join(tmpdir(), "hk-doctor-gate-symlink-"));
+  const outside = mkdtempSync(join(tmpdir(), "hk-doctor-gate-outside-"));
+  write(repo, "src/renderer/page.ts", "export const page = 1;\n");
+  write(outside, "flow.spec.ts", "// outside acceptance coverage\n");
+  symlinkSync(outside, join(repo, "e2e"), "dir");
+  write(
+    repo,
+    ".agents/manifest.yaml",
+    `spec: ai-harness/v1
+identity: { name: symlink-gate, summary: validation gate symlink fixture }
+capabilities:
+  e2e: { run: "true" }
+modules:
+  - name: renderer
+    role: renderer UI
+    entry: [src/renderer/page.ts]
+    owns: [src/renderer/**]
+    gates: [user-flow]
+validation:
+  gates:
+    user-flow:
+      checks: [e2e]
+      acceptance:
+        tests: [e2e/**]
+        test_touch: required
+`,
+  );
+  syncCmd(repo);
+
+  const result = capture(() => doctorCmd(repo));
+  assert.equal(result.code, 1);
+  assert.match(result.output, /validation gate user-flow.*acceptance.*0 files.*required/i);
+});
+
+test("doctor does not let an in-repository symlink alias bypass gate boundary overlap", () => {
+  const repo = mkdtempSync(join(tmpdir(), "hk-doctor-gate-alias-"));
+  write(repo, "src/renderer/page.ts", "export const page = 1;\n");
+  write(repo, "test/flow.spec.ts", "// unit coverage cannot double as gate acceptance\n");
+  symlinkSync(join(repo, "test"), join(repo, "e2e"), "dir");
+  write(
+    repo,
+    ".agents/manifest.yaml",
+    `spec: ai-harness/v1
+identity: { name: alias-gate, summary: validation gate symlink alias fixture }
+capabilities:
+  e2e: { run: "true" }
+modules:
+  - name: renderer
+    role: renderer UI
+    entry: [src/renderer/page.ts]
+    owns: [src/renderer/**]
+    tests: [test/**]
+    gates: [user-flow]
+validation:
+  gates:
+    user-flow:
+      checks: [e2e]
+      acceptance:
+        tests: [e2e/**]
+        test_touch: required
+`,
+  );
+  syncCmd(repo);
+
+  const result = capture(() => doctorCmd(repo));
+  assert.equal(result.code, 1);
+  assert.match(result.output, /validation gate user-flow.*acceptance.*0 files.*required/i);
+});
+
+test("doctor blocks a check-only gate whose module owns no real files", () => {
+  const repo = mkdtempSync(join(tmpdir(), "hk-doctor-gate-dead-owns-"));
+  write(repo, "src/page.ts", "export const page = 1;\n");
+  write(
+    repo,
+    ".agents/manifest.yaml",
+    `spec: ai-harness/v1
+identity: { name: dead-owns-gate, summary: check-only gate fixture }
+capabilities:
+  e2e: { run: "true" }
+modules:
+  - name: renderer
+    role: renderer UI
+    entry: [src/page.ts]
+    owns: [src/renderer/**]
+    gates: [user-flow]
+validation:
+  gates:
+    user-flow:
+      checks: [e2e]
+`,
+  );
+  syncCmd(repo);
+
+  const result = capture(() => doctorCmd(repo));
+  assert.equal(result.code, 1);
+  assert.match(result.output, /validation gate user-flow.*module renderer owns matches 0 files.*cannot activate this gate/i);
+});
+
+test("doctor blocks required acceptance files that overlap module unit or production boundaries", () => {
+  const repo = mkdtempSync(join(tmpdir(), "hk-doctor-gate-overlap-"));
+  write(repo, "src/page.ts", "export const page = 1;\n");
+  write(repo, "test/page.test.ts", "// unit\n");
+  write(
+    repo,
+    ".agents/manifest.yaml",
+    `spec: ai-harness/v1
+identity: { name: overlap, summary: overlap fixture }
+capabilities:
+  e2e: { run: "true" }
+modules:
+  - name: renderer
+    role: renderer
+    entry: [src/page.ts]
+    owns: [src/**]
+    tests: [test/**]
+    gates: [flow]
+validation:
+  gates:
+    flow:
+      checks: [e2e]
+      acceptance:
+        tests: [test/**]
+        test_touch: required
+`,
+  );
+  syncCmd(repo);
+
+  const result = capture(() => doctorCmd(repo));
+  assert.equal(result.code, 1);
+  assert.match(result.output, /validation gate flow.*overlap module renderer owns\/tests.*unit or production files cannot satisfy/i);
+});

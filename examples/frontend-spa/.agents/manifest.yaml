@@ -1,4 +1,4 @@
-spec: ai-harness/v0
+spec: ai-harness/v1
 
 # 压测样例 A：前端 SPA（React + Vite + TypeScript）
 
@@ -20,14 +20,13 @@ identity:
     - CDN（构建产物托管）
 
 capabilities:
-  setup:     { run: "pnpm install" }
+  setup:     { run: "pnpm install && pnpm exec playwright install chromium" }
   run:       { run: "pnpm dev", desc: "本地 dev server", background: true }
   build:     { run: "pnpm build", desc: "产物到 dist/" }
   typecheck: { run: "tsc --noEmit" }
   lint:      { run: "pnpm lint" }
   test:      { run: "pnpm test", desc: "Vitest 单测" }
   e2e:       { run: "pnpm e2e", desc: "Playwright 端到端" }
-  verify:    { run: "harness verify" }
 
 environment:
   - name: VITE_API_BASE_URL
@@ -42,7 +41,7 @@ contracts:
   - id: backend-rest-api
     kind: http-api
     desc: 依赖 acme-api 的 OpenAPI 契约；字段变更需与后端协商
-    check: "pnpm openapi:check"
+    manual_verify: "由 acme-api 的 OpenAPI 变更评审确认字段兼容性；本示例仓不包含上游 schema，不能伪造本地自动检查"
 
 invariants:
   - id: no-raw-fetch
@@ -54,7 +53,7 @@ invariants:
     rule: 不得硬编码 API 地址，须读 VITE_API_BASE_URL
     enforcement:
       forbid_pattern: ["https?://api\\."]
-      path_glob: ["src/**"]
+      path_glob: ["src/main.tsx", "src/api/client.ts", "src/components/index.tsx", "src/pages/**"]
   - id: a11y-baseline
     rule: 交互元素需可键盘访问、有 aria 标签
     manual: true
@@ -81,19 +80,27 @@ modules:
       - 组件不直接 fetch，统一走这里
   - name: ui
     role: UI 组件与页面
-    entry: ["src/components/index.ts"]
-    owns: ["src/components/**", "src/pages/**"]
-    tests: ["src/**/*.spec.tsx", "e2e/**"]
-    checks: ["test", "e2e"]
+    entry: ["src/components/index.tsx"]
+    owns: ["src/main.tsx", "src/components/**", "src/pages/**"]
+    tests: ["src/**/*.spec.tsx"]
+    checks: ["test"]
+    gates: ["browser-user-flow"]
     test_touch: advisory
 
-# 命名 checkset，改 UI 时用 run-checks --profile ui-change 一把梭
+# 快速 profile 只选择普通 checks；UI gate 仍会强制追加 e2e
 validation:
   policies:
     test_touch_default: advisory
   required_coverage: ["src/**"]
+  gates:
+    browser-user-flow:
+      desc: 浏览器中的关键用户路径必须实际回归，不能只靠组件单测
+      checks: ["e2e"]
+      acceptance:
+        tests: ["e2e/**"]
+        test_touch: required
   checksets:
-    ui-change: { checks: ["test", "e2e", "typecheck"] }
+    ui-change: { checks: ["test", "typecheck"] }
   defaults:
     no_match: ["typecheck"]
     always: ["lint"]

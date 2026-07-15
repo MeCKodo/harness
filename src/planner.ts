@@ -1,5 +1,6 @@
 import picomatch from "picomatch";
 import type { Manifest, Module } from "./manifest";
+import { sha256 } from "./util";
 
 // Impact-driven check planner. PURE: given a manifest + the list of changed
 // files, it computes which declared checks to run and where the honest gaps are.
@@ -15,6 +16,7 @@ export type GapKind =
   | "diff-unavailable"
   | "manifest-invalid"
   | "selected-check-not-run"
+  | "validation-gate-invalid"
   | "unmapped-required-file"
   | "unknown-profile"
   | "manual-base-required"
@@ -44,6 +46,7 @@ export interface SelectedCheck {
 export interface Plan {
   changed: string[];
   affected: string[]; // names of modules whose `owns` matched a changed file
+  gates: string[]; // project-defined validation gates activated by affected modules/tests
   checks: SelectedCheck[];
   gaps: Gap[];
   notes: PlanNote[];
@@ -52,6 +55,21 @@ export interface Plan {
 
 export interface PlanOptions {
   profile?: string; // use validation.checksets[profile] instead of per-module checks
+}
+
+export function validationPlanFingerprint(plan: Plan): string {
+  return sha256(
+    JSON.stringify({
+      version: 1,
+      profile: plan.profile,
+      changed: plan.changed,
+      affected: plan.affected,
+      gates: plan.gates,
+      checks: plan.checks,
+      gaps: plan.gaps,
+      notes: plan.notes,
+    }),
+  );
 }
 
 export interface PlannedChange {
@@ -87,12 +105,25 @@ export function planChecks(m: Manifest, input: Array<string | PlannedChange>, op
     tests: mod.tests?.length ? picomatch(mod.tests, { dot: true }) : null,
   }));
   const modulesWithOwns = compiled.filter((item) => item.owns !== null);
+  const gateDefs = m.validation?.gates ?? {};
+  const compiledGates = Object.entries(gateDefs)
+    .map(([id, gate]) => ({
+      id,
+      gate,
+      acceptance: gate.acceptance?.tests?.length ? picomatch(gate.acceptance.tests, { dot: true }) : null,
+      overlapsModuleBoundary: picomatch(
+        modules.filter((mod) => mod.gates?.includes(id)).flatMap((mod) => [...(mod.owns ?? []), ...(mod.tests ?? [])]),
+        { dot: true },
+      ),
+    }));
   const gaps: Gap[] = [];
   const notes: PlanNote[] = [];
 
   // Which modules own at least one changed file, and which files matched anything.
   const affectedModules: Module[] = [];
   const productionAffected = new Set<string>();
+  const affectedGateSet = new Set<string>();
+  const productionAffectedGates = new Set<string>();
   const matchedFiles = new Set<string>();
   for (const item of compiled) {
     const { mod } = item;
@@ -111,6 +142,19 @@ export function planChecks(m: Manifest, input: Array<string | PlannedChange>, op
     if (productionHit || testHit) affectedModules.push(mod);
     if (productionHit) productionAffected.add(mod.name);
   }
+  for (const mod of affectedModules) {
+    for (const gate of mod.gates ?? []) affectedGateSet.add(gate);
+    if (productionAffected.has(mod.name)) for (const gate of mod.gates ?? []) productionAffectedGates.add(gate);
+  }
+  for (const item of compiledGates) {
+    if (!item.acceptance) continue;
+    for (const file of changed) {
+      if (!item.acceptance(file)) continue;
+      matchedFiles.add(file);
+      affectedGateSet.add(item.id);
+    }
+  }
+  const affectedGates = compiledGates.filter((item) => affectedGateSet.has(item.id));
   const unmapped = changed.filter((f) => !matchedFiles.has(f));
   const requiredCoverage = m.validation?.required_coverage?.length
     ? picomatch(m.validation.required_coverage, { dot: true })
@@ -146,6 +190,9 @@ export function planChecks(m: Manifest, input: Array<string | PlannedChange>, op
     if (affectedModules.length === 0)
       for (const c of m.validation?.defaults?.no_match ?? []) add(c, "no_match");
   }
+  // Gates are mandatory proof obligations. Profiles may replace ordinary module
+  // checks, but can never bypass a gate attached to an affected module/test.
+  for (const item of affectedGates) for (const check of item.gate.checks ?? []) add(check, `gate:${item.id}`);
   for (const c of m.validation?.defaults?.always ?? []) add(c, "always");
 
   // ── gaps ────────────────────────────────────────────────────────────────
@@ -191,6 +238,27 @@ export function planChecks(m: Manifest, input: Array<string | PlannedChange>, op
     }
   }
 
+  for (const item of affectedGates) {
+    if (!productionAffectedGates.has(item.id) || !item.gate.acceptance) continue;
+    const policy = item.gate.acceptance.test_touch;
+    if (policy === "off") continue;
+    const testTouched = changed.some(
+      (path) =>
+        finalStatus.get(path)?.status !== "D" &&
+        matchesAny(path, item.gate.acceptance!.tests) &&
+        !item.overlapsModuleBoundary(path),
+    );
+    if (!testTouched) {
+      gaps.push({
+        kind: "missing-test-touch",
+        where: `gate:${item.id}`,
+        why: `生产代码触发了 validation gate ${item.id}，但它的 acceptance tests(${item.gate.acceptance.tests.join(", ")})一个都没动`,
+        suggestion: `在 ${item.gate.acceptance.tests.join(" / ")} 补覆盖本次用户可观察行为的验收用例，或 --waive missing-test-touch --where gate:${item.id} --reason <理由>`,
+        severity: policy === "required" ? "blocking" : "advisory",
+      });
+    }
+  }
+
   if (requiredUnmapped.length) {
     const shown = requiredUnmapped.slice(0, 8).join(", ");
     gaps.push({
@@ -231,5 +299,13 @@ export function planChecks(m: Manifest, input: Array<string | PlannedChange>, op
     });
   }
 
-  return { changed, affected: affectedModules.map((x) => x.name), checks, gaps, notes, profile };
+  return {
+    changed,
+    affected: affectedModules.map((x) => x.name),
+    gates: affectedGates.map((item) => item.id),
+    checks,
+    gaps,
+    notes,
+    profile,
+  };
 }

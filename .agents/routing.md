@@ -13,7 +13,7 @@ Find the change-type that matches your task and follow that row before editing.
 ## 改 manifest schema
 - Read first: `src/manifest.ts`, `SPEC-v0.md`
 - Entry points: `src/manifest.ts`
-- Do NOT assume: schema 改动要同步 SPEC-v0.md + examples/ 四个样板，否则 doctor 漂移
+- Do NOT assume: schema 改动要同步 SPEC-v0.md + examples/ 五个样板，否则 doctor 漂移
 - Do NOT assume: contract id 会成为文件名，glob 会交给 matcher；两者必须在 schema 期限制并安全编译
 - Minimum verification: `typecheck`
 

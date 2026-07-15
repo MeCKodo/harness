@@ -14,6 +14,7 @@ import { renderTargets } from "../render";
 import { inspectContextFreshness, type ContextFreshnessIssue } from "../state";
 import { markManualVerifyResult } from "../validation-state";
 import { err, info, ok, warn } from "../util";
+import { inspectValidationGateHealth } from "../validation-gates";
 
 export interface VerifyOpts {
   budgetMs?: number;
@@ -169,6 +170,16 @@ function verifyInternal(repo: string, opts: VerifyOpts): number {
     for (const message of manifestErrors) emit("error", message);
     emit("info", `\nverify: FAILED (${manifestErrors.length} manifest problem(s))`);
     return finish(1);
+  }
+
+  const gateHealth = inspectValidationGateHealth(repo, manifest);
+  if (gateHealth.length) emit("info", "0) Validation gate coverage");
+  for (const issue of gateHealth) {
+    const message = `validation gate ${issue.gate}: ${issue.message}`;
+    if (issue.level === "error") {
+      failures++;
+      emit("error", message);
+    } else emit("warn", message);
   }
 
   emit("info", "1) Generated files in sync");
@@ -332,7 +343,7 @@ function verifyInternal(repo: string, opts: VerifyOpts): number {
       emit("warn", `Harness readiness: INCOMPLETE (${requiredActions.length} required action(s) above)`);
     return finish(1);
   }
-  emit("info", "verify: OK (all declared gates passed)");
+  emit("info", "verify: OK (repository drift, invariants, and contracts passed; validation checks require matching run-checks evidence)");
   if (requiredActions.length)
     emit("warn", `Harness readiness: INCOMPLETE (${requiredActions.length} required action(s) above)`);
   else emit("ok", "Harness readiness: READY");
